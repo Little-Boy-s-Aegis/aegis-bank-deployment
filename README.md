@@ -39,7 +39,47 @@ This command will:
 2. Compile the Go SOC Backend (`dashboard/backend`) and build its docker image.
 3. Package the React SOC Dashboard (`dashboard/frontend`) and build its docker image.
 4. Compile the Next.js Web Portal (`FE_Web`) and build its docker image.
-5. Launch PostgreSQL, Kafka, Kafdrop, and Nginx.
+5. Launch PostgreSQL, 3-node Kafka HA cluster, Kafdrop, and Nginx.
+
+---
+
+## Kafka High Availability (3-Node KRaft Cluster)
+
+The deployment uses a **3-node Apache Kafka cluster** running in **KRaft mode** (no Zookeeper dependency). This provides fault tolerance and data durability for the security event streaming pipeline.
+
+### Architecture
+
+```text
+                    ┌──────────────────────────────────────────────┐
+                    │        KRaft Controller Quorum (Raft)        │
+                    │  kafka-1:9093  kafka-2:9093  kafka-3:9093    │
+                    └──────────────────────────────────────────────┘
+                           │              │              │
+                    ┌──────┴──────┐┌──────┴──────┐┌──────┴──────┐
+                    │  Broker #1  ││  Broker #2  ││  Broker #3  │
+                    │  kafka-1    ││  kafka-2    ││  kafka-3    │
+                    │  :29092 int ││  :29092 int ││  :29092 int │
+                    │  :9094 ext  ││  :9095 ext  ││  :9096 ext  │
+                    └─────────────┘└─────────────┘└─────────────┘
+                           │              │              │
+              ┌────────────┴──────────────┴──────────────┘
+              │    Producers & Consumers connect to all brokers
+              ├── be-backend     (Spring Boot - Security Event Producer)
+              └── dashboard-backend  (Go - Security Event Consumer)
+```
+
+### HA Configuration Parameters
+
+| Parameter | Value | Purpose |
+|---|---|---|
+| `replication.factor` | `3` | Each partition is replicated across all 3 brokers |
+| `min.insync.replicas` | `2` | At least 2 replicas must acknowledge a write |
+| `controller.quorum.voters` | `1@kafka-1,2@kafka-2,3@kafka-3` | Raft consensus with 3 voters |
+| `transaction.state.log.replication.factor` | `3` | Transaction logs replicated across all brokers |
+
+### Failure Tolerance
+- **1 broker down**: Cluster continues operating normally. No data loss.
+- **2 brokers down**: Cluster loses quorum and stops accepting writes. Existing data is preserved on the surviving node.
 
 ---
 
@@ -55,6 +95,9 @@ Once the containers are running, you can access the components at the following 
 | **Go SOC API** | `8082` | `8082` | `http://localhost/api/` *(Proxied by Nginx)* |
 | **SOC Dashboard Frontend** | `3001` | `3001` | `http://localhost/soc/` *(Proxied by Nginx)* |
 | **Kafdrop (Kafka UI)** | `9000` | `9000` | `http://localhost:9000/` *(Direct)* |
+| **Kafka Broker 1** | `9094` | `29092` | External client access |
+| **Kafka Broker 2** | `9095` | `29092` | External client access |
+| **Kafka Broker 3** | `9096` | `29092` | External client access |
 
 ---
 
@@ -73,6 +116,11 @@ docker compose down -v
 ### View real-time container logs
 ```bash
 docker compose logs -f
+```
+
+### View Kafka cluster logs only
+```bash
+docker compose logs -f kafka-1 kafka-2 kafka-3
 ```
 
 ### Restart a specific service (e.g. rebuild backend changes)
