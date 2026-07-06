@@ -644,7 +644,13 @@ class QwenSecurityAgent:
             dict: SOAR envelope with Layer 1 finding, or None if disabled.
         """
         if not self.enabled:
-            return None
+            agent_key = route_to_agent(log_record)
+            agent_config = AGENTS[agent_key]
+            fallback = self._build_fallback_finding(
+                log_record, agent_config,
+                reason="LLM disabled / classifier-only mode"
+            )
+            return self._wrap_soar_envelope(fallback, agent_key, log_record)
 
         # Route to appropriate agent
         agent_key = route_to_agent(log_record)

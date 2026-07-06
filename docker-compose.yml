@@ -337,6 +337,45 @@ services:
       - aegis-network
 
   # ============================================
+  # Aegis Core SOAR Engine (Layer 2 Orchestrator)
+  # ============================================
+  soar-engine:
+    build:
+      context: ./soar-engine
+      dockerfile: Dockerfile
+    container_name: aegis-soar-engine
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      DASHBOARD_API_URL: http://dashboard-backend:8082/api
+      AEGIS_INTERNAL_TOKEN: aegis-secret-security-sync-token-2026
+      # Qwen LLM Settings
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_MODEL_NAME: ${QWEN_MODEL_NAME:-qwen3-plus}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_TIMEOUT_SECONDS: 10
+      # SOC autopilot configuration
+      SOC_AUTOPILOT_ENABLED: "true"
+      # Offline L2 Prompt / Playbooks Directory
+      AGENT_L2_DIR: /app/agent-layer-2
+    volumes:
+      - ../agent-layer-2:/app/agent-layer-2:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dashboard-backend:
+        condition: service_started
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
+  # ============================================
   # Kafka Topic Provisioner (One-shot)
   # ============================================
   kafka-init:
