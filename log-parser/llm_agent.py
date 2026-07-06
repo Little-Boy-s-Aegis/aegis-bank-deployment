@@ -42,6 +42,13 @@ LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() == "true"
 
+# Circuit breaker: stop calling API after N consecutive failures
+CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD", "5"))
+CIRCUIT_BREAKER_RECOVERY_SECONDS = int(os.getenv("LLM_CIRCUIT_BREAKER_RECOVERY", "60"))
+
+# Rate limit: minimum interval between API calls (seconds)
+LLM_MIN_INTERVAL = float(os.getenv("LLM_MIN_INTERVAL_SECONDS", "0.5"))
+
 SCHEMA_VERSION = "littleboy.soc.layer1.agent_finding.v4"
 
 # Valid enum values from the schema
@@ -424,11 +431,21 @@ class QwenSecurityAgent:
     """
     Wraps Qwen 3 Plus LLM as Layer 1 Security Analyst agents.
     Uses the OpenAI-compatible DashScope API.
+
+    Error handling strategy:
+    - Circuit Breaker: opens after N consecutive failures, auto-recovers
+    - Rate Limiting: enforces minimum interval between API calls
+    - Retry with backoff: exponential backoff + jitter for transient errors
+    - Graceful fallback: classifier-only finding when LLM is unavailable
+    - Granular stats: tracks timeout, rate_limit, auth, parse, network errors
     """
 
     def __init__(self):
         self.enabled = LLM_ENABLED and bool(DASHSCOPE_API_KEY)
         self.client = None
+        self._lock = threading.Lock()
+
+        # Error tracking stats
         self.stats = {
             "total_calls": 0,
             "successful": 0,
@@ -437,8 +454,25 @@ class QwenSecurityAgent:
             "agent_a_calls": 0,
             "agent_b_calls": 0,
             "agent_c_calls": 0,
+            # Granular error counters
+            "errors_timeout": 0,
+            "errors_rate_limit": 0,
+            "errors_auth": 0,
+            "errors_parse_json": 0,
+            "errors_network": 0,
+            "errors_server": 0,
+            "errors_unknown": 0,
+            # Circuit breaker
+            "circuit_breaker_trips": 0,
+            "circuit_breaker_state": "closed",
         }
-        self._lock = threading.Lock()
+
+        # Circuit breaker state
+        self._consecutive_failures = 0
+        self._circuit_open_since = None  # timestamp when circuit opened
+
+        # Rate limiting state
+        self._last_call_time = 0.0
 
         if self.enabled:
             try:
@@ -448,7 +482,12 @@ class QwenSecurityAgent:
                     base_url=QWEN_BASE_URL,
                     timeout=LLM_TIMEOUT,
                 )
-                print(f"[LLM] Qwen Security Agent initialized. Model={QWEN_MODEL} BaseURL={QWEN_BASE_URL}")
+                print(
+                    f"[LLM] Qwen Security Agent initialized. "
+                    f"Model={QWEN_MODEL} BaseURL={QWEN_BASE_URL} "
+                    f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
+                    f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
+                )
             except ImportError:
                 print("[LLM] WARNING: openai package not installed. LLM agent disabled.")
                 self.enabled = False
@@ -461,15 +500,148 @@ class QwenSecurityAgent:
             else:
                 print("[LLM] LLM agent disabled via LLM_ENABLED=false.")
 
+    # --------------------------------------------------
+    # Circuit Breaker
+    # --------------------------------------------------
+    def _is_circuit_open(self):
+        """Check if circuit breaker is open (blocking API calls)."""
+        if self._circuit_open_since is None:
+            return False
+
+        elapsed = time.time() - self._circuit_open_since
+        if elapsed >= CIRCUIT_BREAKER_RECOVERY_SECONDS:
+            # Half-open: allow one probe request
+            print(
+                f"[LLM] Circuit breaker HALF-OPEN after {elapsed:.0f}s. "
+                f"Allowing probe request..."
+            )
+            self._circuit_open_since = None
+            self._consecutive_failures = 0
+            with self._lock:
+                self.stats["circuit_breaker_state"] = "half-open"
+            return False
+
+        return True
+
+    def _record_success(self):
+        """Record successful API call — reset circuit breaker."""
+        self._consecutive_failures = 0
+        self._circuit_open_since = None
+        with self._lock:
+            self.stats["successful"] += 1
+            self.stats["circuit_breaker_state"] = "closed"
+
+    def _record_failure(self, error_type):
+        """Record API failure — may trip circuit breaker."""
+        self._consecutive_failures += 1
+
+        with self._lock:
+            self.stats["failed"] += 1
+            error_key = f"errors_{error_type}"
+            if error_key in self.stats:
+                self.stats[error_key] += 1
+            else:
+                self.stats["errors_unknown"] += 1
+
+        # Trip circuit breaker if threshold reached
+        if self._consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD:
+            self._circuit_open_since = time.time()
+            with self._lock:
+                self.stats["circuit_breaker_trips"] += 1
+                self.stats["circuit_breaker_state"] = "open"
+            print(
+                f"[LLM] ⚠ CIRCUIT BREAKER OPEN after {self._consecutive_failures} "
+                f"consecutive failures. Will retry after {CIRCUIT_BREAKER_RECOVERY_SECONDS}s."
+            )
+
+    # --------------------------------------------------
+    # Rate Limiting
+    # --------------------------------------------------
+    def _enforce_rate_limit(self):
+        """Enforce minimum interval between API calls."""
+        if LLM_MIN_INTERVAL <= 0:
+            return
+        now = time.time()
+        elapsed = now - self._last_call_time
+        if elapsed < LLM_MIN_INTERVAL:
+            sleep_time = LLM_MIN_INTERVAL - elapsed
+            time.sleep(sleep_time)
+        self._last_call_time = time.time()
+
+    # --------------------------------------------------
+    # Error Classification
+    # --------------------------------------------------
+    @staticmethod
+    def _classify_error(exception):
+        """
+        Classify an API exception into error type and retryability.
+        Returns: (error_type: str, is_retryable: bool, wait_hint: float)
+        """
+        error_str = str(exception).lower()
+        error_class = type(exception).__name__
+
+        # Timeout errors
+        if any(kw in error_class.lower() for kw in ("timeout", "readtimeout", "connecttimeout")):
+            return "timeout", True, 2.0
+        if "timeout" in error_str or "timed out" in error_str:
+            return "timeout", True, 2.0
+
+        # Rate limit (HTTP 429)
+        if "429" in error_str or "rate" in error_str and "limit" in error_str:
+            # Extract retry-after if available
+            wait = 5.0
+            try:
+                if hasattr(exception, "response") and exception.response is not None:
+                    retry_after = exception.response.headers.get("retry-after", "5")
+                    wait = min(float(retry_after), 30.0)
+            except (ValueError, AttributeError):
+                pass
+            return "rate_limit", True, wait
+
+        # Authentication errors (HTTP 401, 403)
+        if "401" in error_str or "unauthorized" in error_str:
+            return "auth", False, 0  # NOT retryable — bad API key
+        if "403" in error_str or "forbidden" in error_str:
+            return "auth", False, 0
+
+        # Server errors (HTTP 500, 502, 503)
+        if any(code in error_str for code in ("500", "502", "503", "504")):
+            return "server", True, 3.0
+        if "internal server error" in error_str or "bad gateway" in error_str:
+            return "server", True, 3.0
+
+        # Network/connection errors
+        if any(kw in error_str for kw in ("connection", "network", "dns", "resolve", "refused")):
+            return "network", True, 5.0
+        if any(kw in error_class.lower() for kw in ("connection", "network", "socket")):
+            return "network", True, 5.0
+
+        # JSON decode errors from the response
+        if "json" in error_str or "decode" in error_str:
+            return "parse_json", True, 1.0
+
+        # Unknown
+        return "unknown", True, 2.0
+
+    # --------------------------------------------------
+    # Main Analysis Method
+    # --------------------------------------------------
     def analyze(self, log_record):
         """
         Analyze a log record using the appropriate Qwen agent.
+
+        Error handling:
+        1. Circuit breaker check → fallback if open
+        2. Rate limit enforcement
+        3. API call with granular exception handling
+        4. Retry with exponential backoff + jitter (only for retryable errors)
+        5. Fallback to classifier-only finding on total failure
 
         Args:
             log_record: Parsed and classified log dict from the pipeline.
 
         Returns:
-            dict: Layer 1 agent finding matching v4 schema, or None if disabled/failed.
+            dict: SOAR envelope with Layer 1 finding, or None if disabled.
         """
         if not self.enabled:
             return None
@@ -482,11 +654,25 @@ class QwenSecurityAgent:
             self.stats["total_calls"] += 1
             self.stats[f"{agent_key}_calls"] += 1
 
+        # Circuit breaker check
+        if self._is_circuit_open():
+            with self._lock:
+                self.stats["fallbacks"] += 1
+            fallback = self._build_fallback_finding(
+                log_record, agent_config,
+                reason="Circuit breaker OPEN — API temporarily disabled"
+            )
+            return self._wrap_soar_envelope(fallback, agent_key, log_record)
+
         # Build the telemetry message for the agent
         telemetry_msg = self._build_telemetry_message(log_record)
 
         # Call LLM with retries
+        last_error_type = "unknown"
         for attempt in range(LLM_MAX_RETRIES + 1):
+            # Rate limit enforcement
+            self._enforce_rate_limit()
+
             try:
                 response = self.client.chat.completions.create(
                     model=QWEN_MODEL,
@@ -500,33 +686,73 @@ class QwenSecurityAgent:
                     extra_body={"enable_thinking": False},
                 )
 
-                raw_output = response.choices[0].message.content.strip()
+                # Validate response structure
+                if not response.choices:
+                    raise ValueError("Empty response: no choices returned by API")
+
+                raw_output = response.choices[0].message.content
+                if not raw_output:
+                    raise ValueError("Empty content in API response choice")
+
+                raw_output = raw_output.strip()
                 finding = self._parse_llm_output(raw_output, agent_config)
 
                 if finding:
-                    # Wrap in SOAR envelope for downstream automation
-                    envelope = self._wrap_soar_envelope(
-                        finding, agent_key, log_record
-                    )
-                    with self._lock:
-                        self.stats["successful"] += 1
-                    return envelope
+                    # SUCCESS — reset circuit breaker and wrap
+                    self._record_success()
+                    return self._wrap_soar_envelope(finding, agent_key, log_record)
+                else:
+                    # Parsed but invalid — count as parse error
+                    last_error_type = "parse_json"
+                    if attempt < LLM_MAX_RETRIES:
+                        wait = 1.0 + (0.5 * attempt)
+                        print(
+                            f"[LLM] JSON parse failed for {agent_key}, "
+                            f"retry {attempt + 1}/{LLM_MAX_RETRIES} after {wait:.1f}s"
+                        )
+                        time.sleep(wait)
+                    continue
 
             except Exception as e:
+                error_type, is_retryable, wait_hint = self._classify_error(e)
+                last_error_type = error_type
+
+                if not is_retryable:
+                    # Fatal error (e.g., bad API key) — fail immediately
+                    print(
+                        f"[LLM] FATAL ({error_type}) for {agent_key}: {e}. "
+                        f"NOT retryable — using fallback."
+                    )
+                    self._record_failure(error_type)
+                    break
+
                 if attempt < LLM_MAX_RETRIES:
-                    wait = 2 ** attempt
-                    print(f"[LLM] Retry {attempt + 1}/{LLM_MAX_RETRIES} for {agent_key} after {wait}s: {e}")
+                    # Exponential backoff with jitter
+                    import random
+                    base_wait = wait_hint * (2 ** attempt)
+                    jitter = random.uniform(0, base_wait * 0.3)
+                    wait = min(base_wait + jitter, 30.0)
+
+                    print(
+                        f"[LLM] {error_type.upper()} for {agent_key}: {e}. "
+                        f"Retry {attempt + 1}/{LLM_MAX_RETRIES} after {wait:.1f}s"
+                    )
                     time.sleep(wait)
                 else:
-                    print(f"[LLM] FAILED after {LLM_MAX_RETRIES + 1} attempts for {agent_key}: {e}")
-                    traceback.print_exc()
+                    print(
+                        f"[LLM] FAILED after {LLM_MAX_RETRIES + 1} attempts "
+                        f"for {agent_key}. Last error ({error_type}): {e}"
+                    )
 
-        # All retries exhausted — fallback
+        # All retries exhausted — record failure and fallback
+        self._record_failure(last_error_type)
         with self._lock:
-            self.stats["failed"] += 1
             self.stats["fallbacks"] += 1
 
-        fallback = self._build_fallback_finding(log_record, agent_config)
+        fallback = self._build_fallback_finding(
+            log_record, agent_config,
+            reason=f"LLM API failed ({last_error_type}) after {LLM_MAX_RETRIES + 1} attempts"
+        )
         return self._wrap_soar_envelope(fallback, agent_key, log_record)
 
     def _build_telemetry_message(self, record):
@@ -624,10 +850,11 @@ class QwenSecurityAgent:
             print(f"[LLM] SOAR-CRITICAL: Schema validation failed: {result}")
             return None
 
-    def _build_fallback_finding(self, record, agent_config):
+    def _build_fallback_finding(self, record, agent_config, reason="LLM unavailable"):
         """
         Build a minimal valid finding when LLM is unavailable.
         Uses classifier signals as evidence.
+        Includes the specific failure reason for SOAR diagnostics.
         """
         signals = record.get("classifierSignals", [])
         score = record.get("anomalyScore", 0)
@@ -653,7 +880,7 @@ class QwenSecurityAgent:
             "capec_id": "",
             "mitre_attack_id": "",
             "raw_evidence": (
-                f"Classifier-only fallback (LLM unavailable). "
+                f"Classifier-only fallback ({reason}). "
                 f"Score={score:.2f}, Classification={classification}. "
                 f"Signals: {', '.join(signals[:5])}. "
                 f"Message: {record.get('message', '')[:150]}"
@@ -672,7 +899,8 @@ class QwenSecurityAgent:
             "quality": {
                 "telemetry_completeness": "partial",
                 "mapping_confidence": "none",
-                "notes": "LLM agent unavailable; classifier-only output."
+                "notes": f"Fallback reason: {reason}",
+                "is_fallback": True,
             }
         }
 

@@ -466,7 +466,15 @@ def main():
                     f"[LLM STATS] calls={l_stats['total_calls']} "
                     f"ok={l_stats['successful']} fail={l_stats['failed']} "
                     f"fallback={l_stats['fallbacks']} "
-                    f"A={l_stats['agent_a_calls']} B={l_stats['agent_b_calls']} C={l_stats['agent_c_calls']}"
+                    f"A={l_stats['agent_a_calls']} B={l_stats['agent_b_calls']} C={l_stats['agent_c_calls']} "
+                    f"| errors: timeout={l_stats.get('errors_timeout',0)} "
+                    f"rate_limit={l_stats.get('errors_rate_limit',0)} "
+                    f"auth={l_stats.get('errors_auth',0)} "
+                    f"parse={l_stats.get('errors_parse_json',0)} "
+                    f"network={l_stats.get('errors_network',0)} "
+                    f"server={l_stats.get('errors_server',0)} "
+                    f"| circuit_breaker={l_stats.get('circuit_breaker_state','closed')} "
+                    f"trips={l_stats.get('circuit_breaker_trips',0)}"
                 )
                 
     except KeyboardInterrupt:
