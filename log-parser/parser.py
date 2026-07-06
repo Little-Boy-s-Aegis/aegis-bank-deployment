@@ -5,8 +5,11 @@ import sys
 import time
 import base64
 import urllib.parse
+import gzip
+import threading
 from datetime import datetime, timezone
 from kafka import KafkaConsumer, KafkaProducer
+from classifier import LightweightClassifier
 
 # Configs
 KAFKA_BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:29092,kafka-2:29092,kafka-3:29092").split(",")
@@ -35,6 +38,91 @@ threat_rules = {
 
 # Deduplication cache
 dedup_cache = {}
+
+# ==================================================
+# AWS S3 & Local Raw Logs Compliance Archiver
+# ==================================================
+class S3Archiver:
+    def __init__(self, s3_client, bucket, local_dir):
+        self.s3_client = s3_client
+        self.bucket = bucket
+        self.local_dir = local_dir
+        self.buffers = {}
+        self.lock = threading.Lock()
+        
+        self.flush_interval = 60.0
+        self.timer = threading.Timer(self.flush_interval, self.flush_timer)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def archive(self, facility, record):
+        with self.lock:
+            if facility not in self.buffers:
+                self.buffers[facility] = []
+            self.buffers[facility].append(record)
+            
+            # Flush if buffer reaches 100 entries
+            if len(self.buffers[facility]) >= 100:
+                self.flush_facility(facility)
+
+    def flush_timer(self):
+        try:
+            with self.lock:
+                for facility in list(self.buffers.keys()):
+                    self.flush_facility(facility)
+        except Exception as e:
+            print(f"[S3 ARCHIVER TIMER ERROR] {e}")
+        # Restart timer
+        self.timer = threading.Timer(self.flush_interval, self.flush_timer)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def flush_facility(self, facility):
+        records = self.buffers.get(facility, [])
+        if not records:
+            return
+        
+        # Clear buffer
+        self.buffers[facility] = []
+        
+        # Build file content (JSON Lines format)
+        content_lines = [json.dumps(r) for r in records]
+        content = "\n".join(content_lines) + "\n"
+        
+        # Key path partition for Athena/Lakehouse queries
+        now = datetime.now(timezone.utc)
+        timestamp_str = now.strftime("%Y%m%d_%H%M%S")
+        key = f"raw/year={now.year:04d}/month={now.month:02d}/day={now.day:02d}/{facility}_{timestamp_str}.jsonl.gz"
+        
+        # Compress the content
+        compressed_data = gzip.compress(content.encode('utf-8'))
+        
+        if self.s3_client:
+            # Upload to S3
+            try:
+                self.s3_client.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=compressed_data,
+                    ContentType='application/x-gzip'
+                )
+                print(f"[S3 ARCHIVER] Uploaded {len(content_lines)} raw logs to S3: s3://{self.bucket}/{key}")
+            except Exception as e:
+                print(f"[S3 ARCHIVER ERROR] Failed to upload to S3 ({e}). Saving locally instead.")
+                self.save_locally(key, compressed_data)
+        else:
+            self.save_locally(key, compressed_data)
+
+    def save_locally(self, key, data):
+        local_path = os.path.join(self.local_dir, key)
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        try:
+            with open(local_path, "wb") as f:
+                f.write(data)
+            print(f"[LOCAL ARCHIVER] Archived {len(data)} bytes of raw logs locally: {local_path}")
+        except Exception as e:
+            print(f"[LOCAL ARCHIVER ERROR] Failed to save raw logs locally: {e}")
+
 
 def get_facility(topic):
     if "apigw" in topic:
@@ -265,6 +353,37 @@ def main():
         print("Failed to start Kafka producer. Exiting.")
         sys.exit(1)
 
+    # Initialize S3 Client & Archiver
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    aws_bucket = os.getenv("AWS_S3_BUCKET_NAME", "aegis-raw-logs-compliance")
+    aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+    local_raw_log_dir = os.getenv("LOCAL_RAW_LOG_DIR", "./raw-logs")
+
+    s3_client = None
+    if aws_access_key and aws_secret_key:
+        try:
+            import boto3
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                region_name=aws_region
+            )
+            print(f"[AWS S3] Initialized S3 Client for bucket '{aws_bucket}'.")
+        except Exception as e:
+            print(f"[AWS S3 WARNING] Failed to initialize client: {e}. Falling back to local storage.")
+    else:
+        print("[AWS S3 WARNING] AWS Credentials not set. Raw logs will be saved to local disk for audit.")
+
+    archiver = S3Archiver(s3_client, aws_bucket, local_raw_log_dir)
+
+    # Initialize Lightweight Classifier
+    classifier = LightweightClassifier()
+    stats_interval = 60
+    last_stats_time = time.time()
+    print("[CLASSIFIER] Lightweight anomaly classifier initialized.")
+
     print("Successfully connected to Kafka brokers! Processing logs...")
 
     try:
@@ -273,18 +392,54 @@ def main():
             facility = get_facility(topic)
             raw_record = message.value
             
+            # 1. Archive raw log for Compliance/Audit
+            archiver.archive(facility, raw_record)
+            
+            # 2. Parse, normalize, and verify log entries
             try:
                 clean_record = parse_and_normalize(raw_record, facility)
                 if clean_record:
-                    # Write back to L2 Verification clean topic
-                    producer.send(L2_TOPIC, clean_record)
-                    producer.flush()
-                    print(f"[{facility.upper()}] Parsed log: {clean_record['message']} [Threat={clean_record['threatFlagged']}]")
+                    # 3. Classify: only forward anomalous logs to L2
+                    result = classifier.classify(clean_record)
+                    
+                    if result["should_forward"]:
+                        # Enrich clean record with classifier metadata
+                        clean_record["anomalyScore"] = result["anomaly_score"]
+                        clean_record["classification"] = result["classification"]
+                        clean_record["classifierSignals"] = result["signals"]
+                        
+                        # Write to L2 Verification clean topic
+                        producer.send(L2_TOPIC, clean_record)
+                        producer.flush()
+                        print(
+                            f"[{facility.upper()}] FORWARDED [{result['classification'].upper()}] "
+                            f"score={result['anomaly_score']:.2f} "
+                            f"signals={result['signals']} "
+                            f"msg={clean_record['message'][:80]}"
+                        )
+                    # else: benign log silently dropped
+                    
             except Exception as pe:
                 print(f"Failed to parse log record: {pe}")
+
+            # Periodic stats logging
+            now = time.time()
+            if now - last_stats_time > stats_interval:
+                last_stats_time = now
+                stats = classifier.get_stats()
+                print(
+                    f"[CLASSIFIER STATS] total={stats['total_processed']} "
+                    f"benign_dropped={stats['benign_dropped']} "
+                    f"suspicious={stats['suspicious_forwarded']} "
+                    f"anomalous={stats['anomalous_forwarded']} "
+                    f"threats={stats['threat_forwarded']} "
+                    f"drop_rate={stats.get('drop_rate', 0)}%"
+                )
                 
     except KeyboardInterrupt:
         print("Shutting down log parser pipeline.")
+        stats = classifier.get_stats()
+        print(f"[CLASSIFIER FINAL STATS] {stats}")
     finally:
         consumer.close()
 
