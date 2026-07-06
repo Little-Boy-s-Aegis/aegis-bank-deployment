@@ -209,7 +209,13 @@ def parse_and_normalize(raw_record, facility):
         "source.geo.country_name": geoip,
         "source.as.organization.name": asn,
         "service.name": agent_name,
-        "url.original": decoded_payload
+        "url.original": decoded_payload,
+        "agent.id": agent_id,
+        "agent.name": agent_name,
+        "agent.type": "fluent-bit",
+        "event.category": ["web"] if facility in ("apigw", "waf") else ["process"],
+        "event.kind": "event",
+        "event.outcome": "failure" if (status_code >= 400 or severity == "alert") else "success"
     }
 
 def main():
