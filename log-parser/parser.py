@@ -197,7 +197,19 @@ def parse_and_normalize(raw_record, facility):
         "assetCritical": criticality,
         "threatFlagged": threat_flagged,
         "threatType": threat_type if threat_flagged else None,
-        "decodedPayload": decoded_payload
+        "decodedPayload": decoded_payload,
+
+        # ECS (Elastic Common Schema) Standard Fields
+        "@timestamp": utc_timestamp,
+        "log.level": severity,
+        "event.dataset": f"{facility}.logs",
+        "event.id": log_id,
+        "source.ip": client_ip,
+        "http.response.status_code": status_code if facility in ("apigw", "waf") else None,
+        "source.geo.country_name": geoip,
+        "source.as.organization.name": asn,
+        "service.name": agent_name,
+        "url.original": decoded_payload
     }
 
 def main():
