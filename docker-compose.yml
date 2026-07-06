@@ -277,6 +277,25 @@ services:
     networks:
       - aegis-network
 
+  # ============================================
+  # Kafka Topic Provisioner (One-shot)
+  # ============================================
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: aegis-kafka-init
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: [ "/bin/bash", "-c", "/scripts/init-kafka-topics.sh" ]
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
 volumes:
   postgres_data:
     driver: local
