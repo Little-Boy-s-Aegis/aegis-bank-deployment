@@ -178,8 +178,8 @@ services:
       context: ../BE
       dockerfile: Dockerfile
     container_name: aegis-be-backend
-    expose:
-      - "8080"
+    ports:
+      - "8080:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aegis}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -226,8 +226,8 @@ services:
       context: ../dashboard
       dockerfile: Dockerfile
     container_name: aegis-dashboard-backend
-    expose:
-      - "8082"
+    ports:
+      - "8082:8082"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
@@ -539,6 +539,10 @@ services:
       - "8095"
     environment:
       - SANDBOX_PORT=8095
+      - AEGIS_SECURITY_SYNC_TOKEN=${AEGIS_SECURITY_SYNC_TOKEN}
+      - FORTINET_API_TOKEN=${FORTINET_API_TOKEN:-aegis-fortinet-token-123456}
+      - CROWDSTRIKE_CLIENT_SECRET=${CROWDSTRIKE_CLIENT_SECRET:-mock-crowdstrike-client-secret}
+      - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET:-mock-client-secret}
     networks:
       - aegis-network
 
