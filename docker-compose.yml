@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aegis}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -180,11 +180,11 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aegis}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-1}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
-      JWT_SECRET: ${JWT_SECRET:-9a65a3d7ebe40f1a9aefefefae2a11b98a3e7456d98124ef1240e94abef87ea9}
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
-      AEGIS_SECURITY_SYNC_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN:-aegis-secret-security-sync-token-2026}
+      AEGIS_SECURITY_SYNC_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
       LOGGING_FILE_NAME: /var/log/bank/application.log
     volumes:
       - shared_logs:/var/log/bank
@@ -226,7 +226,7 @@ services:
     ports:
       - "${DASHBOARD_API_PORT:-8082}:8082"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
     depends_on:
       postgres:
@@ -347,10 +347,10 @@ services:
     container_name: aegis-soar-orchestrator
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       DASHBOARD_API_URL: http://dashboard-backend:8082/api
-      AEGIS_INTERNAL_TOKEN: aegis-secret-security-sync-token-2026
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
       # Qwen LLM Settings
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       QWEN_MODEL_NAME: ${QWEN_MODEL_NAME:-qwen3-plus}
@@ -406,7 +406,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
       REDIS_URL: redis://redis:6379/0
       DASHBOARD_API_URL: http://dashboard-backend:8082/api
-      AEGIS_INTERNAL_TOKEN: aegis-secret-security-sync-token-2026
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
       ACTION_EXECUTION_DELAY_SECONDS: "2.0"
       # Vault Configuration
       VAULT_ENABLED: "true"
