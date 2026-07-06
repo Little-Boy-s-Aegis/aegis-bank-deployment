@@ -412,6 +412,7 @@ services:
     command: ["python", "action_worker.py"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       DASHBOARD_API_URL: http://dashboard-backend:8082/api
       AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
