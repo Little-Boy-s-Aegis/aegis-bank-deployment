@@ -266,7 +266,96 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
         # Suppress standard logging to console for cleaner test output
         pass
 
+    def check_authenticated(self):
+        try:
+            # Bypass authentication completely for integration tests (running on a non-default port)
+            if os.getenv("SANDBOX_PORT", "8095") != "8095":
+                return True
+
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
+
+            # 1. UI / Dashboard Root page -> Require Basic Authentication
+            if path == "/":
+
+                auth_header = self.headers.get('Authorization')
+                if not auth_header or not auth_header.startswith('Basic '):
+                    self.send_response(401)
+                    self.send_header('WWW-Authenticate', 'Basic realm="Aegis Sandbox"')
+                    self.end_headers()
+                    self.wfile.write(b"Unauthorized")
+                    return False
+                
+                import base64
+                try:
+                    auth_decoded = base64.b64decode(auth_header.split(' ')[1]).decode('utf-8')
+                    user, password = auth_decoded.split(':')
+                    expected_pass = os.getenv("AEGIS_SECURITY_SYNC_TOKEN", "admin123")
+                    if user != "admin" or password != expected_pass:
+                        raise Exception()
+                except Exception:
+                    self.send_response(401)
+                    self.send_header('WWW-Authenticate', 'Basic realm="Aegis Sandbox"')
+                    self.end_headers()
+                    self.wfile.write(b"Unauthorized")
+                    return False
+                return True
+
+            # 2. Fortinet CMDB endpoints -> Require access_token query param
+            if path.startswith("/api/v2/"):
+                qs = parse_qs(parsed_path.query)
+                token = qs.get("access_token", [""])[0]
+                expected_token = os.getenv("FORTINET_API_TOKEN", "aegis-fortinet-token-123456")
+                if token not in (expected_token, "sandbox-token-xyz", "mock-fortinet-token-123456"):
+                    self.send_response(401)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
+                    return False
+                return True
+
+            # 3. Crowdstrike endpoints (devices query, actions)
+            if path.startswith("/devices/"):
+                auth_header = self.headers.get("Authorization", "") or ""
+                parts = auth_header.split(" ")
+                if len(parts) < 2 or parts[0] != "Bearer":
+                    self.send_response(401)
+                    self.end_headers()
+                    return False
+                token = parts[1]
+                if token not in ("simulated-token", "mock-falcon-token", "mock-entra-token"):
+                    self.send_response(401)
+                    self.end_headers()
+                    return False
+                return True
+
+            # 4. AD Graph endpoints
+            if path.startswith("/v1.0/"):
+                auth_header = self.headers.get("Authorization", "") or ""
+                parts = auth_header.split(" ")
+                if len(parts) < 2 or parts[0] != "Bearer":
+                    self.send_response(401)
+                    self.end_headers()
+                    return False
+                token = parts[1]
+                if token not in ("simulated-token", "mock-falcon-token", "mock-entra-token"):
+                    self.send_response(401)
+                    self.end_headers()
+                    return False
+                return True
+
+            # 5. OAuth tokens -> Handled in do_POST directly
+            return True
+        except Exception as e:
+            import sys
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            self.send_response(500)
+            self.end_headers()
+            return False
+
     def do_GET(self):
+        if not self.check_authenticated():
+            return
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
@@ -332,6 +421,8 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if not self.check_authenticated():
+            return
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         
@@ -372,6 +463,33 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
             return
 
         elif path in ("/oauth2/v2.0/token", "/oauth2/token"):
+            post_params = {}
+            if post_data:
+                try:
+                    post_params = parse_qs(post_data.decode("utf-8"))
+                except Exception:
+                    pass
+            
+            client_secret = ""
+            if isinstance(payload, dict):
+                client_secret = payload.get("client_secret") or ""
+            if not client_secret and post_params:
+                sec_list = post_params.get("client_secret")
+                if sec_list and len(sec_list) > 0:
+                    client_secret = sec_list[0]
+            
+            expected_cs_secret = os.getenv("CROWDSTRIKE_CLIENT_SECRET", "mock-crowdstrike-client-secret")
+            expected_ad_secret = os.getenv("ENTRA_CLIENT_SECRET", "mock-client-secret")
+            
+            is_valid_cs = client_secret in (expected_cs_secret, "sandbox-cs-secret", "mock-crowdstrike-client-secret")
+            is_valid_ad = client_secret in (expected_ad_secret, "sandbox-secret-123", "mock-client-secret")
+            
+            if not is_valid_cs and not is_valid_ad:
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_client"}).encode("utf-8"))
+                return
+
             status_code = 201 if path.endswith("/oauth2/token") else 200
             self.send_response(status_code)
             self.send_header("Content-Type", "application/json")
@@ -405,6 +523,8 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_PATCH(self):
+        if not self.check_authenticated():
+            return
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         
@@ -432,6 +552,8 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_DELETE(self):
+        if not self.check_authenticated():
+            return
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         

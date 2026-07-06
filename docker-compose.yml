@@ -539,6 +539,10 @@ services:
       - "8095"
     environment:
       - SANDBOX_PORT=8095
+      - AEGIS_SECURITY_SYNC_TOKEN=${AEGIS_SECURITY_SYNC_TOKEN}
+      - FORTINET_API_TOKEN=${FORTINET_API_TOKEN:-aegis-fortinet-token-123456}
+      - CROWDSTRIKE_CLIENT_SECRET=${CROWDSTRIKE_CLIENT_SECRET:-mock-crowdstrike-client-secret}
+      - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET:-mock-client-secret}
     networks:
       - aegis-network
 
