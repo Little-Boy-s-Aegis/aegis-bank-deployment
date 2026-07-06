@@ -178,8 +178,8 @@ services:
       context: ../BE
       dockerfile: Dockerfile
     container_name: aegis-be-backend
-    ports:
-      - "${BE_PORT:-8080}:8080"
+    expose:
+      - "8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aegis}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -211,8 +211,8 @@ services:
       context: ../FE_Web
       dockerfile: Dockerfile
     container_name: aegis-fe-web
-    ports:
-      - "${FE_PORT:-3000}:3000"
+    expose:
+      - "3000"
     depends_on:
       - be-backend
     networks:
@@ -226,8 +226,8 @@ services:
       context: ../dashboard
       dockerfile: Dockerfile
     container_name: aegis-dashboard-backend
-    ports:
-      - "${DASHBOARD_API_PORT:-8082}:8082"
+    expose:
+      - "8082"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
@@ -253,8 +253,8 @@ services:
       context: ../dashboard/frontend
       dockerfile: Dockerfile
     container_name: aegis-dashboard-frontend
-    ports:
-      - "${DASHBOARD_FE_PORT:-3001}:3001"
+    expose:
+      - "3001"
     depends_on:
       - dashboard-backend
     networks:
@@ -453,8 +453,8 @@ services:
   vault:
     image: hashicorp/vault:1.15
     container_name: aegis-vault
-    ports:
-      - "8200:8200"
+    expose:
+      - "8200"
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: "aegis-vault-root-token"
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
@@ -482,8 +482,8 @@ services:
   opa:
     image: openpolicyagent/opa:0.61.0-static
     container_name: aegis-opa
-    ports:
-      - "8181:8181"
+    expose:
+      - "8181"
     command:
       - "run"
       - "--server"
@@ -521,8 +521,8 @@ services:
       context: ./staging-sandbox
       dockerfile: Dockerfile
     container_name: aegis-staging-sandbox
-    ports:
-      - "8095:8095"
+    expose:
+      - "8095"
     environment:
       - SANDBOX_PORT=8095
     networks:
