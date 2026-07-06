@@ -22,6 +22,24 @@ services:
       - aegis-network
 
   # ============================================
+  # Redis (Threshold State Management ONLY)
+  # NOT used as message broker — Kafka is the sole broker
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: aegis-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aegis-network
+
+  # ============================================
   # Apache Kafka KRaft HA Cluster (3-Node)
   # Combined broker+controller mode
   # Tolerates 1 node failure
@@ -277,8 +295,70 @@ services:
     networks:
       - aegis-network
 
+  # ============================================
+  # Python Log Parser (L1 Pipeline)
+  # ============================================
+  log-parser:
+    build:
+      context: ./log-parser
+      dockerfile: Dockerfile
+    container_name: aegis-log-parser
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-aegis-raw-logs-compliance}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      LOCAL_RAW_LOG_DIR: /app/raw-logs
+      # Redis for threshold state management
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+      # SOAR Fast-Path topic for obvious attacks
+      SOAR_FAST_PATH_TOPIC: soar.actions.fast-path
+      # Qwen 3 Plus LLM Security Agent
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_MODEL_NAME: ${QWEN_MODEL_NAME:-qwen3-plus}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+    volumes:
+      - ./backups/raw-logs:/app/raw-logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Kafka Topic Provisioner (One-shot)
+  # ============================================
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: aegis-kafka-init
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: [ "/bin/bash", "-c", "/scripts/init-kafka-topics.sh" ]
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
   kafka_data_1:
     driver: local
