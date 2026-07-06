@@ -57,6 +57,11 @@ TOPICS=(
   "l1.agent.findings"
 
   # --------------------------------------------------
+  # SOAR Fast-Path (obvious attacks bypass AI)
+  # --------------------------------------------------
+  "soar.actions.fast-path"
+
+  # --------------------------------------------------
   # Notification (5 channels)
   # --------------------------------------------------
   "notification.dashboard"

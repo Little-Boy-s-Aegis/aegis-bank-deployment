@@ -17,6 +17,7 @@ KAFKA_BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:29092,kafka-2:2909
 L0_TOPICS = ["l0.input.apigw", "l0.input.waf", "l0.input.ebanking-app"]
 L2_TOPIC = "l2.verification.clean-log"
 L1_FINDINGS_TOPIC = "l1.agent.findings"
+SOAR_FAST_PATH_TOPIC = os.getenv("SOAR_FAST_PATH_TOPIC", "soar.actions.fast-path")
 
 # Spring Boot Regex Parser
 # Example: 2026-07-06T07:22:38.194Z  INFO 1 --- [http-nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Servlet
@@ -404,15 +405,48 @@ def main():
             try:
                 clean_record = parse_and_normalize(raw_record, facility)
                 if clean_record:
-                    # 3. Classify: only forward anomalous logs to L2
+                    # 3. 3-Stage Classifier Pipeline
                     result = classifier.classify(clean_record)
-                    
-                    if result["should_forward"]:
+                    routing = result.get("routing_action", "DROP")
+
+                    # ---- Route A: DROP (noise, invalid, benign) ----
+                    if routing == "DROP":
+                        pass  # Silently dropped (already archived)
+
+                    # ---- Route B: SOAR Fast-Path (obvious attacks bypass AI) ----
+                    elif routing == "SOAR_FAST_PATH":
+                        soar_meta = result.get("soar_metadata", {})
+                        soar_event = {
+                            "event_type": "SOAR_FAST_PATH",
+                            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "attack_type": soar_meta.get("attack_type", "UNKNOWN"),
+                            "source_ip": soar_meta.get("source_ip", ""),
+                            "is_internal": soar_meta.get("is_internal", False),
+                            "recommended_action": soar_meta.get("recommended_action", "BLOCK_IP"),
+                            "payload_snippet": soar_meta.get("payload_snippet", "")[:200],
+                            "facility": facility,
+                            "signals": result["signals"],
+                            "anomaly_score": result["anomaly_score"],
+                            "classifier_stage": "stage2_static",
+                        }
+                        producer.send(SOAR_FAST_PATH_TOPIC, soar_event)
+                        producer.flush()
+                        print(
+                            f"[SOAR-FAST] {soar_meta.get('attack_type','?')} "
+                            f"from {soar_meta.get('source_ip','?')} "
+                            f"→ {soar_meta.get('recommended_action','?')} "
+                            f"payload={soar_meta.get('payload_snippet','')[:80]}"
+                        )
+
+                    # ---- Route C: LLM Queue (suspicious → deep AI analysis) ----
+                    elif routing == "LLM_QUEUE":
                         # Enrich clean record with classifier metadata
                         clean_record["anomalyScore"] = result["anomaly_score"]
                         clean_record["classification"] = result["classification"]
                         clean_record["classifierSignals"] = result["signals"]
-                        
+                        if "threshold_rules" in result:
+                            clean_record["thresholdRules"] = result["threshold_rules"]
+
                         # Write to L2 Verification clean topic
                         producer.send(L2_TOPIC, clean_record)
                         producer.flush()
@@ -429,22 +463,20 @@ def main():
                             if envelope:
                                 producer.send(L1_FINDINGS_TOPIC, envelope)
                                 producer.flush()
-                                routing = envelope.get('routing', {})
-                                payload = envelope.get('payload', {})
+                                env_routing = envelope.get('routing', {})
+                                env_payload = envelope.get('payload', {})
                                 print(
-                                    f"[LLM:{routing.get('agent_id','?')}] "
+                                    f"[LLM:{env_routing.get('agent_id','?')}] "
                                     f"corr={envelope.get('correlation_id','')} "
-                                    f"threat={routing.get('threat_detected',False)} "
-                                    f"type={routing.get('finding_type','?')} "
-                                    f"MITRE={payload.get('mitre_attack_id','')} "
-                                    f"CAPEC={payload.get('capec_id','')} "
-                                    f"evidence={payload.get('raw_evidence','')[:100]}"
+                                    f"threat={env_routing.get('threat_detected',False)} "
+                                    f"type={env_routing.get('finding_type','?')} "
+                                    f"MITRE={env_payload.get('mitre_attack_id','')} "
+                                    f"CAPEC={env_payload.get('capec_id','')} "
+                                    f"evidence={env_payload.get('raw_evidence','')[:100]}"
                                 )
                         except Exception as llm_err:
                             print(f"[LLM] Analysis error (non-fatal): {llm_err}")
 
-                    # else: benign log silently dropped
-                    
             except Exception as pe:
                 print(f"Failed to parse log record: {pe}")
 
@@ -455,12 +487,17 @@ def main():
                 c_stats = classifier.get_stats()
                 l_stats = llm_agent.get_stats()
                 print(
-                    f"[CLASSIFIER STATS] total={c_stats['total_processed']} "
-                    f"benign_dropped={c_stats['benign_dropped']} "
+                    f"[PIPELINE STATS] total={c_stats['total_processed']} "
+                    f"s1_invalid={c_stats['stage1_invalid_dropped']} "
+                    f"s2_dropped={c_stats['stage2_static_dropped']} "
+                    f"s2_soar={c_stats['stage2_soar_fast_path']} "
+                    f"s3_threshold={c_stats['stage3_threshold_triggered']} "
+                    f"benign={c_stats['benign_dropped']} "
                     f"suspicious={c_stats['suspicious_forwarded']} "
                     f"anomalous={c_stats['anomalous_forwarded']} "
                     f"threats={c_stats['threat_forwarded']} "
-                    f"drop_rate={c_stats.get('drop_rate', 0)}%"
+                    f"drop_rate={c_stats.get('drop_rate', 0)}% "
+                    f"soar_bypass={c_stats.get('soar_bypass_rate', 0)}%"
                 )
                 print(
                     f"[LLM STATS] calls={l_stats['total_calls']} "

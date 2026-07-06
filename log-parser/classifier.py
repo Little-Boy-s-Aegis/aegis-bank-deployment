@@ -1,24 +1,38 @@
 """
-Aegis Lightweight Log Classifier
-=================================
-A fast, rule-based + statistical anomaly classifier that filters out normal/benign
-log entries and only forwards anomalous or suspicious logs downstream for analysis.
+Aegis Lightweight Log Classifier — 3-Stage Pipeline
+=====================================================
+Production-grade pre-processing classifier that filters out noise, catches obvious
+attacks, and only forwards truly suspicious logs to the LLM for analysis.
 
-Classification Strategy (multi-signal scoring):
-1. Regex Threat Rules      — Known attack patterns (injection, traversal, etc.)
-2. Statistical Baselines   — Deviation from learned traffic baselines
-3. Behavioral Heuristics   — Unusual time, burst patterns, rare endpoints
-4. Entropy Analysis        — High-entropy payloads (obfuscated/encoded attacks)
+Pipeline Architecture (all routing via Kafka — no secondary broker):
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  Stage 1: Pydantic Validation                                      │
+  │    → DROP invalid/malformed logs                                    │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  Stage 2: Static Filtering (Fast Path) — O(1), pure CPU            │
+  │    → DROP: health checks, static assets, internal noise             │
+  │    → SOAR_FAST_PATH: obvious attacks (SQLi, traversal, Log4j)       │
+  │    → CONTINUE: needs further analysis                               │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  Stage 3: Redis Thresholding (State Path) — sliding window          │
+  │    → Enriches with threshold signals (brute-force, burst, etc.)     │
+  │    → Boosts anomaly score when thresholds triggered                 │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  Stage 4: Multi-Signal Scoring (existing)                           │
+  │    → Regex, entropy, baseline, banking-domain signals               │
+  │    → Classify: benign | suspicious | anomalous | threat             │
+  └─────────────────────────────────────────────────────────────────────┘
 
-Output:
-- anomaly_score: float [0.0 – 1.0]  (0=benign, 1=critical threat)
-- classification: "benign" | "suspicious" | "anomalous" | "threat"
-- signals: list of triggered signal names for explainability
+Routing Output:
+  - DROP:           Silently dropped (optionally archived to S3)
+  - SOAR_FAST_PATH: Produce to `soar.actions.fast-path` (bypass AI)
+  - LLM_QUEUE:      Forward to LLM agent for deep analysis
+  - BENIGN_DROP:    Low-score logs dropped after scoring
 
 Integration:
-- Called from parser.py between decode/normalize and Kafka L2 publish.
-- Only logs classified as suspicious/anomalous/threat are forwarded to L2.
-- Benign logs are silently dropped (optionally archived to S3 for audit).
+  - Called from parser.py as the single entry point
+  - Kafka is the ONLY message broker (no RabbitMQ/Redis as queue)
+  - Redis used ONLY for state management (threshold counters)
 """
 
 import math
@@ -26,6 +40,10 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+
+from event_schema import SecurityEventValidator
+from static_rules import StaticRules, ACTION_DROP, ACTION_SOAR_FAST_PATH, ACTION_CONTINUE
+from threshold_rules import ThresholdRules
 
 # ==================================================
 # Signal Weight Configuration
@@ -59,6 +77,13 @@ SIGNAL_WEIGHTS = {
     "atm_hsm_path":          0.25,
     "privileged_identity":   0.25,
     "fraud_control_path":    0.20,
+
+    # Threshold-triggered signals (from Stage 3)
+    "threshold_brute_force":     0.40,
+    "threshold_burst":           0.30,
+    "threshold_error_spike":     0.25,
+    "threshold_scan":            0.35,
+    "threshold_auth_spike":      0.45,
 }
 
 # Anomaly score classification thresholds
@@ -68,6 +93,7 @@ THRESHOLD_THREAT     = 0.75
 
 # ==================================================
 # Lightweight Regex Patterns for Known Attack Vectors
+# (used in Stage 4 scoring — different from Stage 2 SOAR bypass)
 # ==================================================
 ATTACK_PATTERNS = {
     "sql_injection": re.compile(
@@ -118,13 +144,6 @@ SUSPICIOUS_UA_PATTERNS = re.compile(
     r"scrapy|phantomjs|headlesschrome)",
     re.IGNORECASE
 )
-
-# Static asset extensions to always classify as benign
-STATIC_EXTENSIONS = frozenset([
-    ".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".ico",
-    ".svg", ".woff", ".woff2", ".ttf", ".eot", ".map",
-    ".webp", ".avif", ".mp4", ".webm",
-])
 
 # HTTP methods considered unusual/suspicious
 UNUSUAL_METHODS = frozenset(["TRACE", "CONNECT", "OPTIONS", "PATCH", "DELETE", "PUT"])
@@ -222,23 +241,44 @@ def calculate_entropy(text):
 
 
 # ==================================================
-# Main Classifier
+# Main Classifier — 3-Stage Pipeline
 # ==================================================
 class LightweightClassifier:
     """
-    Multi-signal anomaly scorer for security log entries.
+    Production-grade 3-stage classifier pipeline.
     
     Usage:
         classifier = LightweightClassifier()
         result = classifier.classify(log_record)
-        if result["classification"] != "benign":
-            # forward to L2
+        
+        if result["routing_action"] == "SOAR_FAST_PATH":
+            # Send to soar.actions.fast-path topic
+        elif result["routing_action"] == "LLM_QUEUE":
+            # Send to LLM agent for analysis
+        else:
+            # DROP — silently discard
     """
 
     def __init__(self):
+        # Stage 1: Pydantic validation
+        self.validator = SecurityEventValidator()
+        
+        # Stage 2: Static filtering
+        self.static_rules = StaticRules()
+        
+        # Stage 3: Redis thresholding
+        self.threshold_rules = ThresholdRules()
+        
+        # Stage 4: Scoring baseline
         self.baseline = BaselineTracker(window_seconds=300)
+        
+        # Pipeline stats
         self.stats = {
             "total_processed": 0,
+            "stage1_invalid_dropped": 0,
+            "stage2_static_dropped": 0,
+            "stage2_soar_fast_path": 0,
+            "stage3_threshold_triggered": 0,
             "benign_dropped": 0,
             "suspicious_forwarded": 0,
             "anomalous_forwarded": 0,
@@ -247,18 +287,85 @@ class LightweightClassifier:
 
     def classify(self, record):
         """
-        Classify a parsed log record.
+        Run the full 3-stage classification pipeline.
         
         Args:
-            record: dict with keys like message, sourceIp, statusCode,
-                    facility, severity, threatFlagged, decodedPayload, etc.
+            record: dict with keys like message, sourceIp, statusCode, etc.
         
         Returns:
-            dict with: anomaly_score, classification, signals, should_forward
+            dict with:
+              - routing_action: "DROP" | "SOAR_FAST_PATH" | "LLM_QUEUE"
+              - anomaly_score: float [0.0 – 1.0]
+              - classification: "benign" | "suspicious" | "anomalous" | "threat"
+              - signals: list of triggered signal names
+              - should_forward: bool (backward compatible)
+              - soar_metadata: dict (only if SOAR_FAST_PATH)
+              - threshold_rules: list (only if thresholds triggered)
         """
         self.stats["total_processed"] += 1
+
+        # ==========================================
+        # Stage 1: Pydantic Validation
+        # ==========================================
+        validated = self.validator.validate(record)
+        if validated is None:
+            self.stats["stage1_invalid_dropped"] += 1
+            return {
+                "routing_action": "DROP",
+                "anomaly_score": 0.0,
+                "classification": "invalid",
+                "signals": ["invalid_schema"],
+                "should_forward": False,
+            }
+        # Use validated record from here
+        record = validated
+
+        # ==========================================
+        # Stage 2: Static Filtering (Fast Path)
+        # ==========================================
+        action, metadata = self.static_rules.evaluate(record)
+
+        if action == ACTION_DROP:
+            self.stats["stage2_static_dropped"] += 1
+            return {
+                "routing_action": "DROP",
+                "anomaly_score": 0.0,
+                "classification": "noise",
+                "signals": [f"static_drop:{metadata.get('reason', 'unknown')}"],
+                "should_forward": False,
+            }
+
+        if action == ACTION_SOAR_FAST_PATH:
+            self.stats["stage2_soar_fast_path"] += 1
+            attack_type = metadata.get("attack_type", "UNKNOWN")
+            return {
+                "routing_action": "SOAR_FAST_PATH",
+                "anomaly_score": 1.0,
+                "classification": "threat",
+                "signals": [f"soar_bypass:{attack_type}"],
+                "should_forward": True,
+                "soar_metadata": metadata,
+            }
+
+        # ==========================================
+        # Stage 3: Redis Thresholding
+        # ==========================================
+        threshold_triggered, triggered_rules = self.threshold_rules.evaluate(record)
+        if threshold_triggered:
+            self.stats["stage3_threshold_triggered"] += 1
+
+        # ==========================================
+        # Stage 4: Multi-Signal Scoring
+        # ==========================================
         signals = []
         score = 0.0
+
+        # Inject threshold signals into scoring
+        for rule in triggered_rules:
+            rule_name = rule.get("rule", "unknown")
+            signal_key = f"threshold_{rule_name}"
+            signals.append(f"threshold:{rule_name}={rule['count']}/{rule['threshold']}")
+            score += SIGNAL_WEIGHTS.get(signal_key, 0.20)
 
         # Extract fields
         message     = record.get("message", "")
@@ -279,7 +386,7 @@ class LightweightClassifier:
             signals.append(f"regex_threat:{threat_type}")
             score += SIGNAL_WEIGHTS["regex_threat"]
 
-        # 1. Attack Pattern Scanning (beyond existing threat_rules)
+        # 1. Attack Pattern Scanning
         for attack_name, pattern in ATTACK_PATTERNS.items():
             if pattern.search(payload):
                 if f"regex_threat:{attack_name}" not in signals:
@@ -289,7 +396,6 @@ class LightweightClassifier:
         # 2. Entropy Analysis
         if len(payload) > 20:
             entropy = calculate_entropy(payload)
-            # Normal text: ~3.5-4.5 bits, encoded/obfuscated: >5.0
             if entropy > 5.0:
                 signals.append(f"high_entropy:{entropy:.2f}")
                 score += SIGNAL_WEIGHTS["high_entropy_payload"] * min(1.0, (entropy - 5.0) / 2.0)
@@ -356,7 +462,7 @@ class LightweightClassifier:
             signals.append(f"auth_error:{status_code}")
             score += 0.10
 
-        # 11. Banking-domain path detection (from agent-layer-1 schema)
+        # 11. Banking-domain path detection
         payload_lower = payload.lower()
         banking_domain = {}
         if any(kw in payload_lower for kw in ("/swift", "/payment", "/transfer", "/beneficiary")):
@@ -407,17 +513,35 @@ class LightweightClassifier:
 
         should_forward = classification != "benign"
 
-        return {
+        result = {
+            "routing_action": "LLM_QUEUE" if should_forward else "DROP",
             "anomaly_score":   round(score, 4),
             "classification":  classification,
             "signals":         signals,
             "should_forward":  should_forward,
         }
 
+        # Attach threshold rules if triggered
+        if triggered_rules:
+            result["threshold_rules"] = triggered_rules
+
+        return result
+
     def get_stats(self):
         s = self.stats.copy()
         total = s["total_processed"]
         if total > 0:
-            s["drop_rate"] = round(s["benign_dropped"] / total * 100, 1)
-            s["forward_rate"] = round((total - s["benign_dropped"]) / total * 100, 1)
+            effective_dropped = (
+                s["stage1_invalid_dropped"] +
+                s["stage2_static_dropped"] +
+                s["benign_dropped"]
+            )
+            s["drop_rate"] = round(effective_dropped / total * 100, 1)
+            s["forward_rate"] = round((total - effective_dropped) / total * 100, 1)
+            s["soar_bypass_rate"] = round(s["stage2_soar_fast_path"] / total * 100, 1)
+        
+        # Include sub-stage stats
+        s["validator_stats"] = self.validator.get_stats()
+        s["static_rules_stats"] = self.static_rules.get_stats()
+        s["threshold_stats"] = self.threshold_rules.get_stats()
         return s
