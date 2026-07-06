@@ -5,8 +5,9 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: aegis-postgres
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # I-01 fix: No host port binding. Postgres is only accessible within the Docker network.
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aegis}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
