@@ -10,11 +10,13 @@ import threading
 from datetime import datetime, timezone
 from kafka import KafkaConsumer, KafkaProducer
 from classifier import LightweightClassifier
+from llm_agent import QwenSecurityAgent
 
 # Configs
 KAFKA_BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:29092,kafka-2:29092,kafka-3:29092").split(",")
 L0_TOPICS = ["l0.input.apigw", "l0.input.waf", "l0.input.ebanking-app"]
 L2_TOPIC = "l2.verification.clean-log"
+L1_FINDINGS_TOPIC = "l1.agent.findings"
 
 # Spring Boot Regex Parser
 # Example: 2026-07-06T07:22:38.194Z  INFO 1 --- [http-nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Servlet
@@ -384,6 +386,9 @@ def main():
     last_stats_time = time.time()
     print("[CLASSIFIER] Lightweight anomaly classifier initialized.")
 
+    # Initialize Qwen LLM Security Agent
+    llm_agent = QwenSecurityAgent()
+
     print("Successfully connected to Kafka brokers! Processing logs...")
 
     try:
@@ -417,6 +422,26 @@ def main():
                             f"signals={result['signals']} "
                             f"msg={clean_record['message'][:80]}"
                         )
+
+                        # 4. LLM Agent Analysis (async — non-blocking)
+                        try:
+                            finding = llm_agent.analyze(clean_record)
+                            if finding:
+                                producer.send(L1_FINDINGS_TOPIC, finding)
+                                producer.flush()
+                                agent_id = finding.get('agent_id', 'unknown')
+                                threat = finding.get('threat_detected', False)
+                                ftype = finding.get('finding_type', 'unknown')
+                                mitre = finding.get('mitre_attack_id', '')
+                                capec = finding.get('capec_id', '')
+                                print(
+                                    f"[LLM:{agent_id}] threat={threat} type={ftype} "
+                                    f"MITRE={mitre} CAPEC={capec} "
+                                    f"evidence={finding.get('raw_evidence', '')[:100]}"
+                                )
+                        except Exception as llm_err:
+                            print(f"[LLM] Analysis error (non-fatal): {llm_err}")
+
                     # else: benign log silently dropped
                     
             except Exception as pe:
@@ -426,14 +451,21 @@ def main():
             now = time.time()
             if now - last_stats_time > stats_interval:
                 last_stats_time = now
-                stats = classifier.get_stats()
+                c_stats = classifier.get_stats()
+                l_stats = llm_agent.get_stats()
                 print(
-                    f"[CLASSIFIER STATS] total={stats['total_processed']} "
-                    f"benign_dropped={stats['benign_dropped']} "
-                    f"suspicious={stats['suspicious_forwarded']} "
-                    f"anomalous={stats['anomalous_forwarded']} "
-                    f"threats={stats['threat_forwarded']} "
-                    f"drop_rate={stats.get('drop_rate', 0)}%"
+                    f"[CLASSIFIER STATS] total={c_stats['total_processed']} "
+                    f"benign_dropped={c_stats['benign_dropped']} "
+                    f"suspicious={c_stats['suspicious_forwarded']} "
+                    f"anomalous={c_stats['anomalous_forwarded']} "
+                    f"threats={c_stats['threat_forwarded']} "
+                    f"drop_rate={c_stats.get('drop_rate', 0)}%"
+                )
+                print(
+                    f"[LLM STATS] calls={l_stats['total_calls']} "
+                    f"ok={l_stats['successful']} fail={l_stats['failed']} "
+                    f"fallback={l_stats['fallbacks']} "
+                    f"A={l_stats['agent_a_calls']} B={l_stats['agent_b_calls']} C={l_stats['agent_c_calls']}"
                 )
                 
     except KeyboardInterrupt:

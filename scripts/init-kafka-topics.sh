@@ -52,6 +52,11 @@ TOPICS=(
   "l2.verification.opa"
 
   # --------------------------------------------------
+  # L1 Agent Findings (LLM Security Analyst output)
+  # --------------------------------------------------
+  "l1.agent.findings"
+
+  # --------------------------------------------------
   # Notification (5 channels)
   # --------------------------------------------------
   "notification.dashboard"

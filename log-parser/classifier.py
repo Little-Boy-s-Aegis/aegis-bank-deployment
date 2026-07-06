@@ -51,6 +51,14 @@ SIGNAL_WEIGHTS = {
     "critical_asset_access": 0.15,
     "external_ip":           0.10,
     "non_standard_method":   0.15,
+
+    # Banking-domain signals (from agent-layer-1 CAPEC matrix)
+    "swift_payment_path":    0.30,
+    "core_banking_path":     0.25,
+    "customer_data_path":    0.20,
+    "atm_hsm_path":          0.25,
+    "privileged_identity":   0.25,
+    "fraud_control_path":    0.20,
 }
 
 # Anomaly score classification thresholds
@@ -347,6 +355,38 @@ class LightweightClassifier:
         elif status_code in (401, 403):
             signals.append(f"auth_error:{status_code}")
             score += 0.10
+
+        # 11. Banking-domain path detection (from agent-layer-1 schema)
+        payload_lower = payload.lower()
+        banking_domain = {}
+        if any(kw in payload_lower for kw in ("/swift", "/payment", "/transfer", "/beneficiary")):
+            signals.append("banking:swift_payment_path")
+            score += SIGNAL_WEIGHTS["swift_payment_path"]
+            banking_domain["swift_or_payment_path"] = True
+        if any(kw in payload_lower for kw in ("/core-banking", "/account/", "/ledger", "/settlement")):
+            signals.append("banking:core_banking_path")
+            score += SIGNAL_WEIGHTS["core_banking_path"]
+            banking_domain["core_banking_path"] = True
+        if any(kw in payload_lower for kw in ("/customer", "/profile", "/kyc", "/statement", "/personal")):
+            signals.append("banking:customer_data_path")
+            score += SIGNAL_WEIGHTS["customer_data_path"]
+            banking_domain["customer_data_path"] = True
+        if any(kw in payload_lower for kw in ("/atm", "/hsm", "/xfs", "/cash-dispenser")):
+            signals.append("banking:atm_hsm_path")
+            score += SIGNAL_WEIGHTS["atm_hsm_path"]
+            banking_domain["atm_or_hsm_path"] = True
+        if any(kw in payload_lower for kw in ("/iam", "/pam", "/sso", "/ldap", "/kerberos", "/admin/role")):
+            signals.append("banking:privileged_identity")
+            score += SIGNAL_WEIGHTS["privileged_identity"]
+            banking_domain["privileged_identity_path"] = True
+        if any(kw in payload_lower for kw in ("/fraud", "/aml", "/compliance", "/sanctions")):
+            signals.append("banking:fraud_control_path")
+            score += SIGNAL_WEIGHTS["fraud_control_path"]
+            banking_domain["fraud_control_path"] = True
+
+        # Store banking domain flags for LLM agent enrichment
+        if banking_domain:
+            record["_banking_domain"] = banking_domain
 
         # Clamp score
         score = min(1.0, score)
