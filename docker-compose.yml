@@ -278,6 +278,26 @@ services:
       - aegis-network
 
   # ============================================
+  # Python Log Parser (L1 Pipeline)
+  # ============================================
+  log-parser:
+    build:
+      context: ./log-parser
+      dockerfile: Dockerfile
+    container_name: aegis-log-parser
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
+  # ============================================
   # Kafka Topic Provisioner (One-shot)
   # ============================================
   kafka-init:
