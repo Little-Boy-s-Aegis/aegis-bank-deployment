@@ -203,7 +203,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="header">
         <div class="title-group">
-            <h1>🛡️ Aegis Defensive Staging Sandbox</h1>
+            <h1>Aegis Defensive Staging Sandbox</h1>
             <p>Simulating Firewalls, Active Directory, EDR, and WAF endpoints for playbook testing</p>
         </div>
         <div class="status-badge">SANDBOX SIMULATOR: ONLINE</div>
@@ -211,7 +211,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="grid">
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">🔥 Fortinet FortiGate Firewall</span>
+                <span class="panel-title">Fortinet FortiGate Firewall</span>
                 <span class="badge badge-blue">API Active</span>
             </div>
             <div class="item-list">
@@ -221,7 +221,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">👥 Active Directory / Entra ID</span>
+                <span class="panel-title">Active Directory / Entra ID</span>
                 <span class="badge badge-blue">LDAP & Graph</span>
             </div>
             <div class="item-list">
@@ -230,7 +230,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">🦅 CrowdStrike Falcon EDR</span>
+                <span class="panel-title">CrowdStrike Falcon EDR</span>
                 <span class="badge badge-blue">Falcon SDK</span>
             </div>
             <div class="item-list">
@@ -239,7 +239,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">☁️ AWS Web Application Firewall</span>
+                <span class="panel-title">AWS Web Application Firewall</span>
                 <span class="badge badge-blue">WAFv2 Client</span>
             </div>
             <div class="item-list">
@@ -249,7 +249,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel logs-panel">
             <div class="panel-header">
-                <span class="panel-title">📟 Real-time Sandbox Action Logs</span>
+                <span class="panel-title">Real-time Sandbox Action Logs</span>
                 <button onclick="window.location.reload();" style="background: none; border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 0.72rem;">Refresh</button>
             </div>
             <div class="log-container">
@@ -263,6 +263,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 class SandboxRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
+        # Suppress standard logging to console for cleaner test output
         pass
 
     def do_GET(self):
@@ -299,17 +300,18 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
             for log in sandbox_state["logs"]:
                 log_rows += f'<div class="log-line"><span class="log-ts">[{log["timestamp"]}]</span><span class="log-sys">{log["system"]}</span><span class="log-msg">{log["message"]}</span></div>'
 
-            html = HTML_TEMPLATE.format(
-                addr_rows=addr_rows,
-                ad_rows=ad_rows,
-                cs_rows=cs_rows,
-                waf_rows=waf_rows,
-                log_rows=log_rows
+            html = (
+                HTML_TEMPLATE.replace("{addr_rows}", addr_rows)
+                .replace("{ad_rows}", ad_rows)
+                .replace("{cs_rows}", cs_rows)
+                .replace("{waf_rows}", waf_rows)
+                .replace("{log_rows}", log_rows)
             )
             self.wfile.write(html.encode("utf-8"))
             return
 
         elif path == "/devices/queries/devices/v1":
+            # CrowdStrike device query
             qs = parse_qs(parsed_path.query)
             filter_param = qs.get("filter", [""])[0]
             target_hostname = filter_param.split("'")[1] if "'" in filter_param else ""
@@ -325,6 +327,7 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"resources": aids}).encode("utf-8"))
             return
 
+        # 404 handler
         self.send_response(404)
         self.end_headers()
 
@@ -397,6 +400,7 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"resources": [{"id": aid, "status": "success"} for aid in ids]}).encode("utf-8"))
             return
 
+        # 404 handler
         self.send_response(404)
         self.end_headers()
 
