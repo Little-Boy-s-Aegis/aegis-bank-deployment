@@ -491,11 +491,15 @@ services:
     container_name: aegis-opa
     expose:
       - "8181"
+    environment:
+      AEGIS_SECURITY_SYNC_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
     command:
       - "run"
       - "--server"
       - "--log-level=info"
-      - "/policies/soar.rego"
+      - "--authentication=token"
+      - "--authorization=basic"
+      - "/policies"
     volumes:
       - ./opa/policies:/policies:ro
     networks:
