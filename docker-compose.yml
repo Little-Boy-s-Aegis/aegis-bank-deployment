@@ -179,7 +179,7 @@ services:
       dockerfile: Dockerfile
     container_name: aegis-be-backend
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aegis}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -227,7 +227,7 @@ services:
       dockerfile: Dockerfile
     container_name: aegis-dashboard-backend
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
@@ -267,8 +267,8 @@ services:
     image: nginx:alpine
     container_name: aegis-nginx-gateway
     ports:
-      - "${NGINX_PORT:-80}:80"
-      - "9000:9000"
+      - "127.0.0.1:${NGINX_PORT:-80}:80"
+      - "127.0.0.1:9000:9000"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
