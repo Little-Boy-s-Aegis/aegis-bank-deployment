@@ -477,7 +477,7 @@ services:
       AD_LDAP_PASSWORD: ${AD_LDAP_PASSWORD:-mock-ldap-password}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-mock-aws-secret}
     command: >
-      sh -c "until curl -s http://vault:8200/v1/sys/health | grep -q '\"initialized\":true'; do echo 'Waiting for Vault...'; sleep 2; done; echo 'Vault is ready. Provisioning secrets...'; curl -s --header \"X-Vault-Token: $$VAULT_ROOT_TOKEN\" --request POST --data \"{\\\"data\\\": {\\\"FORTINET_API_TOKEN\\\": \\\"$$FORTINET_API_TOKEN\\\", \\\"CROWDSTRIKE_CLIENT_SECRET\\\": \\\"$$CROWDSTRIKE_CLIENT_SECRET\\\", \\\"ENTRA_CLIENT_SECRET\\\": \\\"$$ENTRA_CLIENT_SECRET\\\", \\\"AD_LDAP_PASSWORD\\\": \\\"$$AD_LDAP_PASSWORD\\\", \\\"AWS_SECRET_ACCESS_KEY\\\": \\\"$$AWS_SECRET_ACCESS_KEY\\\"}}\" http://vault:8200/v1/secret/data/aegis/soar; echo 'Secrets provisioned successfully.';"
+      sh -c "until curl -s http://vault:8200/v1/sys/health | grep -q '\"initialized\":true'; do echo 'Waiting for Vault...'; sleep 2; done; echo 'Vault is ready. Provisioning secrets...'; curl -s -o /dev/null --header \"X-Vault-Token: $$VAULT_ROOT_TOKEN\" --request POST --data \"{\\\"data\\\": {\\\"FORTINET_API_TOKEN\\\": \\\"$$FORTINET_API_TOKEN\\\", \\\"CROWDSTRIKE_CLIENT_SECRET\\\": \\\"$$CROWDSTRIKE_CLIENT_SECRET\\\", \\\"ENTRA_CLIENT_SECRET\\\": \\\"$$ENTRA_CLIENT_SECRET\\\", \\\"AD_LDAP_PASSWORD\\\": \\\"$$AD_LDAP_PASSWORD\\\", \\\"AWS_SECRET_ACCESS_KEY\\\": \\\"$$AWS_SECRET_ACCESS_KEY\\\"}}\" http://vault:8200/v1/secret/data/aegis/soar; echo 'Secrets provisioned successfully.';"
     depends_on:
       - vault
     networks:
