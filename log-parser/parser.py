@@ -423,21 +423,22 @@ def main():
                             f"msg={clean_record['message'][:80]}"
                         )
 
-                        # 4. LLM Agent Analysis (async — non-blocking)
+                        # 4. LLM Agent Analysis → SOAR-ready JSON envelope
                         try:
-                            finding = llm_agent.analyze(clean_record)
-                            if finding:
-                                producer.send(L1_FINDINGS_TOPIC, finding)
+                            envelope = llm_agent.analyze(clean_record)
+                            if envelope:
+                                producer.send(L1_FINDINGS_TOPIC, envelope)
                                 producer.flush()
-                                agent_id = finding.get('agent_id', 'unknown')
-                                threat = finding.get('threat_detected', False)
-                                ftype = finding.get('finding_type', 'unknown')
-                                mitre = finding.get('mitre_attack_id', '')
-                                capec = finding.get('capec_id', '')
+                                routing = envelope.get('routing', {})
+                                payload = envelope.get('payload', {})
                                 print(
-                                    f"[LLM:{agent_id}] threat={threat} type={ftype} "
-                                    f"MITRE={mitre} CAPEC={capec} "
-                                    f"evidence={finding.get('raw_evidence', '')[:100]}"
+                                    f"[LLM:{routing.get('agent_id','?')}] "
+                                    f"corr={envelope.get('correlation_id','')} "
+                                    f"threat={routing.get('threat_detected',False)} "
+                                    f"type={routing.get('finding_type','?')} "
+                                    f"MITRE={payload.get('mitre_attack_id','')} "
+                                    f"CAPEC={payload.get('capec_id','')} "
+                                    f"evidence={payload.get('raw_evidence','')[:100]}"
                                 )
                         except Exception as llm_err:
                             print(f"[LLM] Analysis error (non-fatal): {llm_err}")

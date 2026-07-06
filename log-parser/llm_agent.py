@@ -22,7 +22,9 @@ Architecture:
 
 import json
 import os
+import re
 import time
+import hashlib
 import threading
 import traceback
 from datetime import datetime, timezone
@@ -52,6 +54,14 @@ VALID_KILL_CHAIN_PHASES = {
     "privilege_escalation", "defense_evasion", "credential_access",
     "discovery", "lateral_movement", "collection",
     "command_and_control", "exfiltration", "impact", "unknown"
+}
+
+# Fields that Layer 1 must NEVER include (runtime contract)
+PROHIBITED_FIELDS = {
+    "risk_score", "confidence_score", "priority", "response_mode",
+    "incident_routing", "opa_decision", "playbook", "playbook_id",
+    "containment_eligible", "auto_execute", "action", "recommended_action",
+    "block_ip", "quarantine_host", "force_logout", "disable_account",
 }
 
 # ==================================================
@@ -486,6 +496,7 @@ class QwenSecurityAgent:
                     ],
                     temperature=0.1,
                     max_tokens=1500,
+                    response_format={"type": "json_object"},
                     extra_body={"enable_thinking": False},
                 )
 
@@ -493,9 +504,13 @@ class QwenSecurityAgent:
                 finding = self._parse_llm_output(raw_output, agent_config)
 
                 if finding:
+                    # Wrap in SOAR envelope for downstream automation
+                    envelope = self._wrap_soar_envelope(
+                        finding, agent_key, log_record
+                    )
                     with self._lock:
                         self.stats["successful"] += 1
-                    return finding
+                    return envelope
 
             except Exception as e:
                 if attempt < LLM_MAX_RETRIES:
@@ -511,7 +526,8 @@ class QwenSecurityAgent:
             self.stats["failed"] += 1
             self.stats["fallbacks"] += 1
 
-        return self._build_fallback_finding(log_record, agent_config)
+        fallback = self._build_fallback_finding(log_record, agent_config)
+        return self._wrap_soar_envelope(fallback, agent_key, log_record)
 
     def _build_telemetry_message(self, record):
         """Format a log record as a telemetry feed for the LLM agent."""
@@ -546,46 +562,66 @@ class QwenSecurityAgent:
         )
 
     def _parse_llm_output(self, raw_output, agent_config):
-        """Parse and validate the LLM JSON output."""
-        # Strip markdown code fences if present
-        cleaned = raw_output
+        """
+        Parse, sanitize, and validate the LLM JSON output.
+        Enforces strict JSON compliance for SOAR consumption.
+        """
+        # 1. Strip markdown code fences if LLM ignores response_format
+        cleaned = raw_output.strip()
         if cleaned.startswith("```"):
-            # Remove opening fence
             first_newline = cleaned.find("\n")
             if first_newline != -1:
                 cleaned = cleaned[first_newline + 1:]
-            # Remove closing fence
             if cleaned.rstrip().endswith("```"):
                 cleaned = cleaned.rstrip()[:-3].rstrip()
 
+        # 2. Strip any leading/trailing prose before/after JSON
+        cleaned = cleaned.strip()
+
+        # 3. Parse JSON — try direct first, then extract
+        finding = None
         try:
             finding = json.loads(cleaned)
         except json.JSONDecodeError:
-            # Try to extract JSON from mixed output
-            start = cleaned.find("{")
-            end = cleaned.rfind("}") + 1
-            if start != -1 and end > start:
+            # Extract JSON object from mixed text
+            match = re.search(r'\{[\s\S]*\}', cleaned)
+            if match:
                 try:
-                    finding = json.loads(cleaned[start:end])
+                    finding = json.loads(match.group())
                 except json.JSONDecodeError:
-                    print(f"[LLM] Failed to parse JSON from output: {raw_output[:200]}")
-                    return None
-            else:
-                print(f"[LLM] No JSON found in output: {raw_output[:200]}")
-                return None
+                    pass
 
-        # Force correct agent identity
+        if not finding or not isinstance(finding, dict):
+            print(f"[LLM] SOAR-CRITICAL: Failed to extract valid JSON: {raw_output[:200]}")
+            return None
+
+        # 4. Force correct agent identity (prevent LLM hallucination)
+        finding["schema_version"] = SCHEMA_VERSION
         finding["agent_id"] = agent_config["id"]
         finding["agent_name"] = agent_config["name"]
         finding["agent_type"] = agent_config["type"]
-        finding["schema_version"] = SCHEMA_VERSION
 
-        # Validate
+        # 5. Strip PROHIBITED fields (Layer 1 contract: never score/route/act)
+        for field in PROHIBITED_FIELDS:
+            finding.pop(field, None)
+
+        # 6. Type coercion for SOAR-critical fields
+        finding["threat_detected"] = bool(finding.get("threat_detected", False))
+        finding["capec_id"] = str(finding.get("capec_id", ""))
+        finding["mitre_attack_id"] = str(finding.get("mitre_attack_id", ""))
+        finding["raw_evidence"] = str(finding.get("raw_evidence", ""))[:2000]
+
+        # 7. Ensure timestamp is ISO8601
+        ts = finding.get("timestamp", "")
+        if not ts or not isinstance(ts, str):
+            finding["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # 8. Validate against v4 schema
         is_valid, result = validate_finding(finding)
         if is_valid:
             return result
         else:
-            print(f"[LLM] Schema validation failed: {result}")
+            print(f"[LLM] SOAR-CRITICAL: Schema validation failed: {result}")
             return None
 
     def _build_fallback_finding(self, record, agent_config):
@@ -641,6 +677,57 @@ class QwenSecurityAgent:
         }
 
         return finding
+
+    def _wrap_soar_envelope(self, finding, agent_key, log_record):
+        """
+        Wrap a validated Layer 1 finding in a SOAR-consumable envelope.
+
+        The envelope provides:
+        - Unique correlation_id for tracing across pipeline stages
+        - Processing metadata (source, timing, routing)
+        - The original finding as `payload` (untouched)
+        - Schema version for SOAR parser compatibility
+
+        Downstream SOAR systems can reliably:
+        1. Parse this as JSON (guaranteed structure)
+        2. Route by `routing.agent_key` and `routing.facility`
+        3. Correlate with L0/L2 data via `correlation_id`
+        4. Determine response urgency from `payload.finding_type`
+        """
+        now = datetime.now(timezone.utc)
+
+        # Deterministic correlation ID from timestamp + source IP + agent
+        corr_seed = (
+            f"{log_record.get('@timestamp', '')}"
+            f"{log_record.get('sourceIp', '')}"
+            f"{agent_key}"
+            f"{now.isoformat()}"
+        )
+        correlation_id = hashlib.sha256(corr_seed.encode()).hexdigest()[:16]
+
+        envelope = {
+            # === SOAR Envelope Metadata ===
+            "envelope_version": "aegis.soar.layer1.v1",
+            "correlation_id": f"L1-{correlation_id}",
+            "produced_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "aegis-log-parser",
+            "pipeline_stage": "layer1_agent_analysis",
+
+            # === Routing Hints for SOAR ===
+            "routing": {
+                "agent_key": agent_key,
+                "agent_id": finding.get("agent_id", ""),
+                "facility": log_record.get("facility", ""),
+                "threat_detected": finding.get("threat_detected", False),
+                "finding_type": finding.get("finding_type", "no_threat"),
+                "classifier_score": log_record.get("anomalyScore", 0),
+            },
+
+            # === The Layer 1 Finding (SOAR payload) ===
+            "payload": finding,
+        }
+
+        return envelope
 
     def get_stats(self):
         with self._lock:
