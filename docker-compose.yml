@@ -228,6 +228,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -362,6 +363,7 @@ services:
       LLM_TIMEOUT_SECONDS: 10
       # SOC autopilot configuration
       SOC_AUTOPILOT_ENABLED: "true"
+      FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
       # Offline L2 Prompt / Playbooks Directory
       AGENT_L2_DIR: /app/agent-layer-2
       # Vault Configuration
@@ -421,6 +423,7 @@ services:
       OPA_URL: "http://opa:8181"
       # Asset Inventory Configuration
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
+      FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
     depends_on:
       redis:
         condition: service_healthy
@@ -462,18 +465,7 @@ services:
     image: curlimages/curl:latest
     container_name: aegis-vault-init
     command: >
-      sh -c "
-      until curl -s http://vault:8200/v1/sys/health | grep -q '\"initialized\":true'; do
-        echo 'Waiting for Vault...';
-        sleep 2;
-      done;
-      echo 'Vault is ready. Provisioning secrets...';
-      curl -s --header 'X-Vault-Token: aegis-vault-root-token' \
-        --request POST \
-        --data '{\"data\": {\"FORTINET_API_TOKEN\": \"mock-fortinet-token-123456\", \"CROWDSTRIKE_CLIENT_SECRET\": \"mock-crowdstrike-client-secret\", \"ENTRA_CLIENT_SECRET\": \"mock-client-secret\", \"AD_LDAP_PASSWORD\": \"mock-ldap-password\", \"AWS_SECRET_ACCESS_KEY\": \"mock-aws-secret\"}}' \
-        http://vault:8200/v1/secret/data/aegis/soar;
-      echo 'Secrets provisioned successfully.';
-      "
+      sh -c "until curl -s http://vault:8200/v1/sys/health | grep -q '\"initialized\":true'; do echo 'Waiting for Vault...'; sleep 2; done; echo 'Vault is ready. Provisioning secrets...'; curl -s --header 'X-Vault-Token: aegis-vault-root-token' --request POST --data '{\"data\": {\"FORTINET_API_TOKEN\": \"aegis-fortinet-token-123456\", \"CROWDSTRIKE_CLIENT_SECRET\": \"mock-crowdstrike-client-secret\", \"ENTRA_CLIENT_SECRET\": \"mock-client-secret\", \"AD_LDAP_PASSWORD\": \"mock-ldap-password\", \"AWS_SECRET_ACCESS_KEY\": \"mock-aws-secret\"}}' http://vault:8200/v1/secret/data/aegis/soar; echo 'Secrets provisioned successfully.';"
     depends_on:
       - vault
     networks:
