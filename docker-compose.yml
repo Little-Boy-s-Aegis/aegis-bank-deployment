@@ -337,16 +337,18 @@ services:
       - aegis-network
 
   # ============================================
-  # Aegis Core SOAR Engine (Layer 2 Orchestrator)
   # ============================================
-  soar-engine:
+  # Aegis SOAR Orchestrator Microservice (Qwen 3.7 Plus Agent)
+  # ============================================
+  soar-orchestrator:
     build:
-      context: ./soar-engine
+      context: ../soar-engine
       dockerfile: Dockerfile
-    container_name: aegis-soar-engine
+    container_name: aegis-soar-orchestrator
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
       DASHBOARD_API_URL: http://dashboard-backend:8082/api
       AEGIS_INTERNAL_TOKEN: aegis-secret-security-sync-token-2026
       # Qwen LLM Settings
@@ -359,10 +361,22 @@ services:
       SOC_AUTOPILOT_ENABLED: "true"
       # Offline L2 Prompt / Playbooks Directory
       AGENT_L2_DIR: /app/agent-layer-2
+      # Vault Configuration
+      VAULT_ENABLED: "true"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "aegis-vault-root-token"
+      VAULT_SECRET_PATH: "secret/data/aegis/soar"
+      # OPA Configuration
+      OPA_ENABLED: "true"
+      OPA_URL: "http://opa:8181"
+      # Asset Inventory Configuration
+      ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
     volumes:
       - ../agent-layer-2:/app/agent-layer-2:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       dashboard-backend:
         condition: service_started
@@ -372,6 +386,111 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      opa:
+        condition: service_started
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Aegis SOAR Action Execution & Rate-Limiting Microservice (Message Queue Worker)
+  # ============================================
+  soar-action-worker:
+    build:
+      context: ../soar-engine
+      dockerfile: Dockerfile
+    container_name: aegis-soar-action-worker
+    command: ["python", "action_worker.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      REDIS_URL: redis://redis:6379/0
+      DASHBOARD_API_URL: http://dashboard-backend:8082/api
+      AEGIS_INTERNAL_TOKEN: aegis-secret-security-sync-token-2026
+      ACTION_EXECUTION_DELAY_SECONDS: "2.0"
+      # Vault Configuration
+      VAULT_ENABLED: "true"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "aegis-vault-root-token"
+      VAULT_SECRET_PATH: "secret/data/aegis/soar"
+      # OPA Configuration
+      OPA_ENABLED: "true"
+      OPA_URL: "http://opa:8181"
+      # Asset Inventory Configuration
+      ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
+    depends_on:
+      redis:
+        condition: service_healthy
+      dashboard-backend:
+        condition: service_started
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      opa:
+        condition: service_started
+    networks:
+      - aegis-network
+
+  # ============================================
+  # HashiCorp Vault (Secure Credential Storage)
+  # ============================================
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: aegis-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "aegis-vault-root-token"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Vault Secret Provisioner (One-shot)
+  # ============================================
+  vault-init:
+    image: curlimages/curl:latest
+    container_name: aegis-vault-init
+    command: >
+      sh -c "
+      until curl -s http://vault:8200/v1/sys/health | grep -q '\"initialized\":true'; do
+        echo 'Waiting for Vault...';
+        sleep 2;
+      done;
+      echo 'Vault is ready. Provisioning secrets...';
+      curl -s --header 'X-Vault-Token: aegis-vault-root-token' \
+        --request POST \
+        --data '{\"data\": {\"FORTINET_API_TOKEN\": \"mock-fortinet-token-123456\", \"CROWDSTRIKE_CLIENT_SECRET\": \"mock-crowdstrike-client-secret\", \"ENTRA_CLIENT_SECRET\": \"mock-client-secret\", \"AD_LDAP_PASSWORD\": \"mock-ldap-password\", \"AWS_SECRET_ACCESS_KEY\": \"mock-aws-secret\"}}' \
+        http://vault:8200/v1/secret/data/aegis/soar;
+      echo 'Secrets provisioned successfully.';
+      "
+    depends_on:
+      - vault
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Open Policy Agent (OPA Safety Engine)
+  # ============================================
+  opa:
+    image: openpolicyagent/opa:0.61.0-static
+    container_name: aegis-opa
+    ports:
+      - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=info"
+      - "/policies/soar.rego"
+    volumes:
+      - ./opa/policies:/policies:ro
     networks:
       - aegis-network
 
@@ -391,6 +510,21 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Staging Sandbox Simulator (Defensive API Mocks)
+  # ============================================
+  staging-sandbox:
+    build:
+      context: ./staging-sandbox
+      dockerfile: Dockerfile
+    container_name: aegis-staging-sandbox
+    ports:
+      - "8095:8095"
+    environment:
+      - SANDBOX_PORT=8095
     networks:
       - aegis-network
 

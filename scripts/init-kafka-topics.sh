@@ -62,6 +62,12 @@ TOPICS=(
   "soar.actions.fast-path"
 
   # --------------------------------------------------
+  # SOAR Decisions & Action Queue (v7 Microservices)
+  # --------------------------------------------------
+  "soar.decisions"
+  "soar.actions.queued"
+
+  # --------------------------------------------------
   # Notification (5 channels)
   # --------------------------------------------------
   "notification.dashboard"
