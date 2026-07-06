@@ -203,7 +203,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="header">
         <div class="title-group">
-            <h1>🛡️ Aegis Defensive Staging Sandbox</h1>
+            <h1>Aegis Defensive Staging Sandbox</h1>
             <p>Simulating Firewalls, Active Directory, EDR, and WAF endpoints for playbook testing</p>
         </div>
         <div class="status-badge">SANDBOX SIMULATOR: ONLINE</div>
@@ -211,7 +211,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="grid">
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">🔥 Fortinet FortiGate Firewall</span>
+                <span class="panel-title">Fortinet FortiGate Firewall</span>
                 <span class="badge badge-blue">API Active</span>
             </div>
             <div class="item-list">
@@ -221,7 +221,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">👥 Active Directory / Entra ID</span>
+                <span class="panel-title">Active Directory / Entra ID</span>
                 <span class="badge badge-blue">LDAP & Graph</span>
             </div>
             <div class="item-list">
@@ -230,7 +230,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">🦅 CrowdStrike Falcon EDR</span>
+                <span class="panel-title">CrowdStrike Falcon EDR</span>
                 <span class="badge badge-blue">Falcon SDK</span>
             </div>
             <div class="item-list">
@@ -239,7 +239,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-title">☁️ AWS Web Application Firewall</span>
+                <span class="panel-title">AWS Web Application Firewall</span>
                 <span class="badge badge-blue">WAFv2 Client</span>
             </div>
             <div class="item-list">
@@ -249,7 +249,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="panel logs-panel">
             <div class="panel-header">
-                <span class="panel-title">📟 Real-time Sandbox Action Logs</span>
+                <span class="panel-title">Real-time Sandbox Action Logs</span>
                 <button onclick="window.location.reload();" style="background: none; border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 0.72rem;">Refresh</button>
             </div>
             <div class="log-container">
