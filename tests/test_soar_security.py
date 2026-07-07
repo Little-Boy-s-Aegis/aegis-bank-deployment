@@ -2,8 +2,13 @@ import unittest
 import sys
 import os
 
-# Add soar-engine to path
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "soar-engine"))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.basename(BASE_DIR) == "aegis-bank-deployment":
+    PROJECT_ROOT = os.path.dirname(BASE_DIR)
+else:
+    PROJECT_ROOT = BASE_DIR
+sys.path.append(os.path.join(PROJECT_ROOT, "soar-engine"))
+
 
 class TestSoarSecurity(unittest.TestCase):
     def test_soar_schema_validation_rejects_invalid(self):
