@@ -382,23 +382,20 @@ class TestNginxSecurity(unittest.TestCase):
         self.assertIn("rate=", self.conf, "No rate= parameter found in rate limiting config!")
 
     def test_nginx_server_tokens_off(self):
-        """Server version disclosure should be prevented.
-        
-        NOTE: nginx:alpine disables server_tokens by default. An explicit
-        'server_tokens off;' directive is recommended for documentation.
-        """
-        # Check if server_tokens is explicitly set to off, or if it's implicitly off
+        """Server version disclosure should be prevented."""
+        # Check if server_tokens is explicitly set to off
         has_explicit = "server_tokens off" in self.conf
+        self.assertTrue(
+            has_explicit,
+            "server_tokens is not explicitly set to 'off' in Nginx configuration!"
+        )
         # Also check no 'server_tokens on' exists
         has_on = "server_tokens on" in self.conf
         self.assertFalse(
             has_on,
             "server_tokens is explicitly set to 'on'! This leaks nginx version info."
         )
-        self.assertTrue(
-            has_explicit,
-            "server_tokens off; is not explicitly configured in nginx config!"
-        )
+
 
     def test_nginx_blocked_paths(self):
         """Sensitive paths (Tomcat manager, .git, .env) should be blocked."""
