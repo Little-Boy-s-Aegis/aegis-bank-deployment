@@ -18,13 +18,20 @@ import yaml
 # Paths (relative to repo root – adjust if your CWD differs)
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEPLOYMENT_DIR = os.path.join(BASE_DIR, "aegis-bank-deployment")
+if os.path.basename(BASE_DIR) == "aegis-bank-deployment" or os.path.exists(os.path.join(BASE_DIR, "docker-compose.yml")):
+    DEPLOYMENT_DIR = BASE_DIR
+    PROJECT_ROOT = os.path.dirname(BASE_DIR)
+else:
+    DEPLOYMENT_DIR = os.path.join(BASE_DIR, "aegis-bank-deployment")
+    PROJECT_ROOT = BASE_DIR
+
 COMPOSE_PATH = os.path.join(DEPLOYMENT_DIR, "docker-compose.yml")
 NGINX_CONF_PATH = os.path.join(DEPLOYMENT_DIR, "nginx", "default.conf")
 VAULT_HCL_PATH = os.path.join(DEPLOYMENT_DIR, "vault", "config", "vault.hcl")
 OPA_SOAR_REGO_PATH = os.path.join(DEPLOYMENT_DIR, "opa", "policies", "soar.rego")
 KAFKA_INIT_SCRIPT = os.path.join(DEPLOYMENT_DIR, "scripts", "init-kafka-topics.sh")
-SOAR_DOCKERFILE = os.path.join(BASE_DIR, "soar-engine", "Dockerfile")
+SOAR_DOCKERFILE = os.path.join(PROJECT_ROOT, "soar-engine", "Dockerfile")
+
 
 
 def _load_compose() -> dict:

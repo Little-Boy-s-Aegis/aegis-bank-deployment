@@ -28,7 +28,11 @@ import pytest
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parent.parent  # d:\hackathon
+BASE_DIR = Path(__file__).resolve().parent.parent
+if BASE_DIR.name == "aegis-bank-deployment":
+    PROJECT_ROOT = BASE_DIR.parent
+else:
+    PROJECT_ROOT = BASE_DIR
 
 FE_WEB_SRC = PROJECT_ROOT / "FE_Web" / "src"
 DASHBOARD_SRC = PROJECT_ROOT / "dashboard" / "frontend" / "src"
@@ -39,6 +43,7 @@ NEXT_CONFIG_CANDIDATES = [
 ]
 TRANSACTIONS_PAGE = FE_WEB_SRC / "app" / "transactions" / "page.tsx"
 DASHBOARD_PAGE = FE_WEB_SRC / "app" / "dashboard" / "page.tsx"
+
 
 # All frontend source directories to scan
 ALL_SRC_DIRS: List[Path] = [d for d in [FE_WEB_SRC, DASHBOARD_SRC] if d.exists()]
