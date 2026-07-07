@@ -529,6 +529,13 @@ class TestCSPSecurityHeaders:
                 "microphone, geolocation, etc."
             )
 
+    def test_nextjs_powered_by_header_disabled(self, config_text: str):
+        """next.config must set poweredByHeader to false to prevent X-Powered-By disclosure."""
+        assert "poweredByHeader: false" in config_text or "poweredByHeader:false" in config_text.replace(" ", ""), (
+            "poweredByHeader: false is missing in next.config.ts! "
+            "This will leak X-Powered-By: Next.js header."
+        )
+
 
 # ========================================================================
 # Sensitive Data Exposure Tests
