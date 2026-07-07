@@ -351,6 +351,7 @@ services:
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
     volumes:
       - ./backups/raw-logs:/app/raw-logs
+      - ../agent-layer-1:/app/agent-layer-1:ro
     depends_on:
       redis:
         condition: service_healthy

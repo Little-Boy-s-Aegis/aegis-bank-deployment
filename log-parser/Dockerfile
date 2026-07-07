@@ -13,5 +13,6 @@ COPY llm_agent.py .
 COPY event_schema.py .
 COPY static_rules.py .
 COPY threshold_rules.py .
+COPY agent_routing_rules.json .
 
 ENTRYPOINT ["python", "parser.py"]

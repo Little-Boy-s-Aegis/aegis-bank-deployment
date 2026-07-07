@@ -438,6 +438,90 @@ def validate_finding(finding):
 
 
 # ==================================================
+# Dynamic Prompts and Routing Rules Loading
+# ==================================================
+def load_prompt_file(agent_key: str, default_prompt: str) -> str:
+    agent_paths = {
+        "agent_a": "/app/agent-layer-1/agent_a/agent_a_internal_network_edr_system_prompt.md",
+        "agent_b": "/app/agent-layer-1/agent_b/agent_b_ebanking_api_web_ueba_system_prompt.md",
+        "agent_c": "/app/agent-layer-1/agent_c/agent_c_atm_iam_adversarial_system_prompt.md",
+    }
+    path = agent_paths.get(agent_key)
+    if path and os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    print(f"[LLM] Successfully loaded dynamic system prompt for {agent_key} from {path}")
+                    return content
+        except Exception as e:
+            print(f"[LLM] Error reading prompt file {path}: {e}")
+            
+    # Local fallback for tests/development outside Docker
+    local_paths = {
+        "agent_a": "../agent-layer-1/agent_a/agent_a_internal_network_edr_system_prompt.md",
+        "agent_b": "../agent-layer-1/agent_b/agent_b_ebanking_api_web_ueba_system_prompt.md",
+        "agent_c": "../agent-layer-1/agent_c/agent_c_atm_iam_adversarial_system_prompt.md",
+    }
+    local_path = local_paths.get(agent_key)
+    if local_path and os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    print(f"[LLM] Successfully loaded dynamic system prompt for {agent_key} from local {local_path}")
+                    return content
+        except Exception as e:
+            print(f"[LLM] Error reading local prompt file {local_path}: {e}")
+            
+    print(f"[LLM] Using inline fallback system prompt for {agent_key}")
+    return default_prompt
+
+
+def load_routing_rules():
+    rules_path = "/app/agent_routing_rules.json"
+    if not os.path.exists(rules_path):
+        # Fallback to local sibling path
+        rules_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "agent_routing_rules.json")
+        
+    facility_map = {
+        "apigw": "agent_b",
+        "waf":   "agent_b",
+        "app":   "agent_a",
+    }
+    threat_overrides = {
+        "CREDENTIAL_STUFFING":    "agent_c",
+        "BRUTE_FORCE":            "agent_c",
+        "MFA_BYPASS":             "agent_c",
+        "KERBEROS_ABUSE":         "agent_c",
+        "PRIVILEGE_ESCALATION":   "agent_c",
+        "ATM_TAMPERING":          "agent_c",
+        "SQL_INJECTION":          "agent_b",
+        "XSS_ATTACK":             "agent_b",
+        "SSRF_ATTEMPT":           "agent_b",
+        "BOLA_IDOR":              "agent_b",
+        "SESSION_HIJACKING":      "agent_b",
+        "PERSONA_HIJACKING":      "agent_b",
+        "CHATML_TOKEN_INJECTION": "agent_b",
+        "LLM_TAG_INJECTION":      "agent_b",
+    }
+    
+    if os.path.exists(rules_path):
+        try:
+            with open(rules_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "FACILITY_AGENT_MAP" in data:
+                    facility_map = data["FACILITY_AGENT_MAP"]
+                if "THREAT_AGENT_OVERRIDES" in data:
+                    threat_overrides = data["THREAT_AGENT_OVERRIDES"]
+                print(f"[LLM] Loaded routing rules from {rules_path}")
+        except Exception as e:
+            print(f"[LLM] Error loading routing rules from {rules_path}: {e}")
+            
+    return facility_map, threat_overrides
+
+
+# ==================================================
 # Agent Router
 # ==================================================
 def route_to_agent(log_record):
@@ -445,10 +529,12 @@ def route_to_agent(log_record):
     Determine which agent should analyze this log record.
     Returns agent key: 'agent_a', 'agent_b', or 'agent_c'.
     """
+    facility_map, threat_overrides = load_routing_rules()
+    
     # 1. Check threat type overrides first
     threat_type = log_record.get("threatType", "")
-    if threat_type and threat_type in THREAT_AGENT_OVERRIDES:
-        return THREAT_AGENT_OVERRIDES[threat_type]
+    if threat_type and threat_type in threat_overrides:
+        return threat_overrides[threat_type]
 
     # 2. Check classifier signals for IAM/ATM keywords
     signals = log_record.get("classifierSignals", [])
@@ -458,7 +544,7 @@ def route_to_agent(log_record):
 
     # 3. Route by facility
     facility = log_record.get("facility", "")
-    return FACILITY_AGENT_MAP.get(facility, "agent_a")
+    return facility_map.get(facility, "agent_a")
 
 
 # ==================================================
@@ -682,7 +768,8 @@ class QwenSecurityAgent:
         """
         if not self.enabled:
             agent_key = route_to_agent(log_record)
-            agent_config = AGENTS[agent_key]
+            agent_config = AGENTS[agent_key].copy()
+            agent_config["system_prompt"] = load_prompt_file(agent_key, agent_config["system_prompt"])
             fallback = self._build_fallback_finding(
                 log_record, agent_config,
                 reason="LLM disabled / classifier-only mode"
@@ -691,7 +778,8 @@ class QwenSecurityAgent:
 
         # Route to appropriate agent
         agent_key = route_to_agent(log_record)
-        agent_config = AGENTS[agent_key]
+        agent_config = AGENTS[agent_key].copy()
+        agent_config["system_prompt"] = load_prompt_file(agent_key, agent_config["system_prompt"])
 
         with self._lock:
             self.stats["total_calls"] += 1
