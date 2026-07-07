@@ -529,6 +529,16 @@ class TestCSPSecurityHeaders:
                 "microphone, geolocation, etc."
             )
 
+    def test_nextjs_powered_by_header_disabled(self, config_text: str):
+        """next.config must disable poweredByHeader to prevent fingerprinting."""
+        assert "poweredByHeader" in config_text, (
+            "poweredByHeader is not configured in next.config"
+        )
+        assert re.search(r"poweredByHeader\s*:\s*false", config_text), (
+            "poweredByHeader is not set to false in next.config"
+        )
+
+
 
 # ========================================================================
 # Sensitive Data Exposure Tests
