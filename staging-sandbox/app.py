@@ -266,6 +266,10 @@ class SandboxRequestHandler(BaseHTTPRequestHandler):
         # Suppress standard logging to console for cleaner test output
         pass
 
+    def address_string(self):
+        # Prevent reverse DNS lookup delay (40 seconds on Docker/Windows)
+        return self.client_address[0]
+
     def check_authenticated(self):
         try:
             # Bypass authentication completely for integration tests (running on a non-default port)

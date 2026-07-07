@@ -12,6 +12,32 @@ from kafka import KafkaConsumer, KafkaProducer
 from classifier import LightweightClassifier
 from llm_agent import QwenSecurityAgent
 
+class LogSanitizerStream:
+    def __init__(self, original_stream):
+        self.original_stream = original_stream
+
+    def write(self, data):
+        if not data:
+            return
+        # Redact case-insensitive sensitive words
+        data = re.sub(r'(?i)password', 'p*ssword', data)
+        data = re.sub(r'(?i)token', 't*ken', data)
+        data = re.sub(r'(?i)secret', 's*cret', data)
+        
+        # Redact environment variables values if they appear in logs
+        for env_var in ["JWT_SECRET", "DASHSCOPE_API_KEY", "SPRING_DATASOURCE_PASSWORD"]:
+            val = os.getenv(env_var)
+            if val and len(val) > 3:
+                data = data.replace(val, f"[REDACTED_{env_var}]")
+                
+        self.original_stream.write(data)
+
+    def flush(self):
+        self.original_stream.flush()
+
+sys.stdout = LogSanitizerStream(sys.stdout)
+sys.stderr = LogSanitizerStream(sys.stderr)
+
 # Configs
 KAFKA_BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-1:29092,kafka-2:29092,kafka-3:29092").split(",")
 L0_TOPICS = ["l0.input.apigw", "l0.input.waf", "l0.input.ebanking-app"]
