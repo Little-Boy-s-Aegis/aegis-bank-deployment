@@ -1,0 +1,42 @@
+name: Security & Compliance Audit Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  security-tests:
+    name: Run Automated Security Audits
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-data-cache: true
+        python-version: '3.11'
+
+    - name: Install Test Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pyyaml requests
+
+    - name: Copy Env Template
+      run: cp .env.example .env
+
+    - name: Run Docker Compose & Infrastructure Security Audits
+      run: |
+        pytest tests/test_docker_security.py -v
+
+    - name: Run Frontend XSS & Sensitive Data Leak Scans
+      run: |
+        pytest tests/test_frontend_security.py -v
+
+    - name: Run SOAR Engine Sandboxing & Policy Guardrail Audits
+      run: |
+        pytest tests/test_soar_security.py -v
