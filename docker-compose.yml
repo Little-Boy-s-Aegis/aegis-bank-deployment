@@ -240,6 +240,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
       AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
       BANK_BACKEND_URL: http://be-backend:8080
+      AEGIS_SIMULATION_ENABLED: ${AEGIS_SIMULATION_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
