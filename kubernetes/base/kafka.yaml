@@ -91,8 +91,6 @@ spec:
               value: "2"
             - name: CLUSTER_ID
               value: "AegisKafkaCluster001xyzw"
-            # Node ID and Advertised Listener are set dynamically via pre-start script
-            # to match the statefulset pod identity
           command:
             - "/bin/bash"
             - "-c"
@@ -100,8 +98,27 @@ spec:
               POD_INDEX=$(echo $HOSTNAME | awk -F'-' '{print $NF}')
               export KAFKA_NODE_ID=$POD_INDEX
               export KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka-$POD_INDEX.kafka-hl:29092
+              
+              echo "Checking for existing node ID configuration..."
+              if [ -f /var/lib/kafka/data/meta.properties ]; then
+                STORED_ID=$(grep "node.id" /var/lib/kafka/data/meta.properties | cut -d'=' -f2)
+                if [ "$STORED_ID" != "$KAFKA_NODE_ID" ]; then
+                  echo "Node ID mismatch: stored=$STORED_ID, configured=$KAFKA_NODE_ID. Clearing data..."
+                  rm -rf /var/lib/kafka/data/*
+                fi
+              fi
+              
+              echo "Preparing server properties for formatting..."
+              cp /opt/kafka/config/kraft/server.properties /tmp/server.properties
+              sed -i "s|node.id=.*|node.id=$KAFKA_NODE_ID|" /tmp/server.properties
+              sed -i "s|controller.quorum.voters=.*|controller.quorum.voters=$KAFKA_CONTROLLER_QUORUM_VOTERS|" /tmp/server.properties
+              sed -i 's|log.dirs=.*|log.dirs=/var/lib/kafka/data|' /tmp/server.properties
+              
+              echo "Formatting storage directory..."
+              /opt/kafka/bin/kafka-storage.sh format -t $CLUSTER_ID -c /tmp/server.properties --ignore-formatted
+              
               echo "Starting Kafka node $KAFKA_NODE_ID with listeners $KAFKA_ADVERTISED_LISTENERS..."
-              exec /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties \
+              exec /opt/kafka/bin/kafka-server-start.sh /tmp/server.properties \
                 --override process.roles=$KAFKA_PROCESS_ROLES \
                 --override node.id=$KAFKA_NODE_ID \
                 --override controller.quorum.voters=$KAFKA_CONTROLLER_QUORUM_VOTERS \
@@ -113,8 +130,7 @@ spec:
                 --override auto.create.topics.enable=$KAFKA_AUTO_CREATE_TOPICS_ENABLE \
                 --override num.partitions=$KAFKA_NUM_PARTITIONS \
                 --override default.replication.factor=$KAFKA_DEFAULT_REPLICATION_FACTOR \
-                --override min.insync.replicas=$KAFKA_MIN_INSYNC_REPLICAS \
-                --override log.dirs=/var/lib/kafka/data
+                --override min.insync.replicas=$KAFKA_MIN_INSYNC_REPLICAS
           ports:
             - containerPort: 29092
               name: internal

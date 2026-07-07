@@ -274,7 +274,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: HA_NODE_ROLE
               value: "active"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -365,7 +365,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: HA_NODE_ROLE
               value: "standby"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -442,7 +442,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
@@ -506,7 +506,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
@@ -690,3 +690,44 @@ spec:
             items:
               - key: htpasswd
                 path: .htpasswd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+spec:
+  selector:
+    app: kafka-ui
+  ports:
+    - port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: obsidiandynamics/kafdrop:4.0.2
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BROKERCONNECT
+              value: {{ .Values.aws.mskBrokers | quote }}
+            {{- else }}
+            - name: KAFKA_BROKERCONNECT
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            {{- end }}
+            - name: JVM_OPTS
+              value: "-Xms32M -Xmx64M"
+          ports:
+            - containerPort: 9000

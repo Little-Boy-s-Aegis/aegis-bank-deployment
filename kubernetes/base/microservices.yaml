@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: be-backend
-          image: aegis-be-backend:latest
+          image: aegis-bank-deployment-be-backend:latest
           imagePullPolicy: Never
           env:
             - name: SPRING_DATASOURCE_URL
@@ -58,7 +58,12 @@ spec:
           volumeMounts:
             - name: shared-logs
               mountPath: /var/log/bank
-          healthCheck:
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
             tcpSocket:
               port: 8080
             initialDelaySeconds: 15
@@ -94,7 +99,7 @@ spec:
     spec:
       containers:
         - name: fe-web
-          image: aegis-fe-web:latest
+          image: aegis-bank-deployment-fe-web:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 3000
@@ -126,7 +131,7 @@ spec:
     spec:
       containers:
         - name: dashboard-backend
-          image: aegis-dashboard-backend:latest
+          image: aegis-bank-deployment-dashboard-backend:latest
           imagePullPolicy: Never
           env:
             - name: DATABASE_URL
@@ -149,7 +154,12 @@ spec:
               value: "false"
           ports:
             - containerPort: 8082
-          healthCheck:
+          livenessProbe:
+            tcpSocket:
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
             tcpSocket:
               port: 8082
             initialDelaySeconds: 5
@@ -182,7 +192,7 @@ spec:
     spec:
       containers:
         - name: dashboard-frontend
-          image: aegis-dashboard-frontend:latest
+          image: aegis-bank-deployment-dashboard-frontend:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 3001
@@ -214,7 +224,7 @@ spec:
     spec:
       containers:
         - name: soar-orchestrator
-          image: aegis-soar-engine:latest
+          image: aegis-bank-deployment-soar-orchestrator:latest
           imagePullPolicy: Never
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
@@ -261,7 +271,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: HA_NODE_ROLE
               value: "active"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -296,7 +306,7 @@ spec:
     spec:
       containers:
         - name: soar-orchestrator-standby
-          image: aegis-soar-engine:latest
+          image: aegis-bank-deployment-soar-orchestrator:latest
           imagePullPolicy: Never
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
@@ -343,7 +353,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: HA_NODE_ROLE
               value: "standby"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -378,7 +388,7 @@ spec:
     spec:
       containers:
         - name: soar-action-worker
-          image: aegis-soar-engine:latest
+          image: aegis-bank-deployment-soar-action-worker:latest
           imagePullPolicy: Never
           command: ["python", "action_worker.py"]
           env:
@@ -411,7 +421,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
@@ -433,7 +443,7 @@ spec:
     spec:
       containers:
         - name: soar-action-worker-standby
-          image: aegis-soar-engine:latest
+          image: aegis-bank-deployment-soar-action-worker:latest
           imagePullPolicy: Never
           command: ["python", "action_worker.py"]
           env:
@@ -466,7 +476,7 @@ spec:
             - name: OPA_ENABLED
               value: "true"
             - name: OPA_URL
-              value: "http://OPA:8181"
+              value: "http://opa:8181"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
@@ -499,7 +509,7 @@ spec:
     spec:
       containers:
         - name: staging-sandbox
-          image: aegis-staging-sandbox:latest
+          image: aegis-bank-deployment-staging-sandbox:latest
           imagePullPolicy: Never
           env:
             - name: SANDBOX_PORT
@@ -534,7 +544,7 @@ spec:
     spec:
       containers:
         - name: log-parser
-          image: aegis-log-parser:latest
+          image: aegis-bank-deployment-log-parser:latest
           imagePullPolicy: Never
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
@@ -635,3 +645,39 @@ spec:
             items:
               - key: htpasswd
                 path: .htpasswd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+spec:
+  selector:
+    app: kafka-ui
+  ports:
+    - port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: obsidiandynamics/kafdrop:4.0.2
+          env:
+            - name: KAFKA_BROKERCONNECT
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: JVM_OPTS
+              value: "-Xms32M -Xmx64M"
+          ports:
+            - containerPort: 9000

@@ -35,7 +35,12 @@ spec:
           volumeMounts:
             - name: redis-data
               mountPath: /data
-          healthCheck:
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 5
