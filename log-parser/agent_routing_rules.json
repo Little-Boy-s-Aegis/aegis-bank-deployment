@@ -1,0 +1,23 @@
+{
+  "FACILITY_AGENT_MAP": {
+    "apigw": "agent_b",
+    "waf": "agent_b",
+    "app": "agent_a"
+  },
+  "THREAT_AGENT_OVERRIDES": {
+    "CREDENTIAL_STUFFING": "agent_c",
+    "BRUTE_FORCE": "agent_c",
+    "MFA_BYPASS": "agent_c",
+    "KERBEROS_ABUSE": "agent_c",
+    "PRIVILEGE_ESCALATION": "agent_c",
+    "ATM_TAMPERING": "agent_c",
+    "SQL_INJECTION": "agent_b",
+    "XSS_ATTACK": "agent_b",
+    "SSRF_ATTEMPT": "agent_b",
+    "BOLA_IDOR": "agent_b",
+    "SESSION_HIJACKING": "agent_b",
+    "PERSONA_HIJACKING": "agent_b",
+    "CHATML_TOKEN_INJECTION": "agent_b",
+    "LLM_TAG_INJECTION": "agent_b"
+  }
+}
