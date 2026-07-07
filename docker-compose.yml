@@ -398,6 +398,40 @@ services:
       OPA_URL: "http://opa:8181"
       # Asset Inventory Configuration
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
+      # HA Configuration
+      HA_NODE_ROLE: "active"
+      HA_HEALTH_CHECK_INTERVAL_MS: "5000"
+      HA_LEADERSHIP_TTL_S: "15"
+      # Notification Connectors
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-mock-telegram-token}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_SERVER_CHAT_ID: ${TELEGRAM_SERVER_CHAT_ID:-}
+      PAGERDUTY_ROUTING_KEY: ${PAGERDUTY_ROUTING_KEY:-mock-pagerduty-key}
+      JIRA_URL: ${JIRA_URL:-https://jira.example.com}
+      JIRA_USER: ${JIRA_USER:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-mock-jira-token}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-AEGIS}
+      SMTP_HOST: ${SMTP_HOST:-mock-smtp-host}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-soc@aegis.bank}
+      EMAIL_TO_SOC: ${EMAIL_TO_SOC:-soc-team@aegis.bank}
+      MQTT_BROKER: ${MQTT_BROKER:-mock-mqtt-broker}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-aegis/soc}
+      WEBHOOK_URLS: ${WEBHOOK_URLS:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      # Threat Intelligence
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-mock-vt-api-key}
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-mock-abuseipdb-key}
+      SHODAN_API_KEY: ${SHODAN_API_KEY:-mock-shodan-key}
+      # Scheduler
+      SCHEDULER_ENABLED: "true"
+      DIGEST_INTERVAL_MINUTES: "15"
+      # PRE-KILL Monitor
+      PREKILL_ENABLED: "true"
+      PREKILL_DEFAULT_TTL_MINUTES: "60"
     volumes:
       - ../agent-layer-2:/app/agent-layer-2:ro
     depends_on:
@@ -447,6 +481,9 @@ services:
       # Asset Inventory Configuration
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
       FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
+      # PRE-KILL Monitor
+      PREKILL_ENABLED: "true"
+      PREKILL_DEFAULT_TTL_MINUTES: "60"
     depends_on:
       redis:
         condition: service_healthy
@@ -462,6 +499,105 @@ services:
         condition: service_completed_successfully
       opa:
         condition: service_started
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Aegis SOAR Orchestrator STANDBY (HA Failover Node)
+  # System Design: 2 Orchestrator Instances (1 Active, 1 Standby)
+  # ============================================
+  soar-orchestrator-standby:
+    build:
+      context: ../soar-engine
+      dockerfile: Dockerfile
+    container_name: aegis-soar-orchestrator-standby
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      DASHBOARD_API_URL: http://dashboard-backend:8082/api
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_MODEL_NAME: ${QWEN_MODEL_NAME:-qwen3-plus}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      LLM_ENABLED: ${LLM_ENABLED:-true}
+      LLM_TIMEOUT_SECONDS: 10
+      SOC_AUTOPILOT_ENABLED: "true"
+      FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
+      AGENT_L2_DIR: /app/agent-layer-2
+      VAULT_ENABLED: "true"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-aegis-vault-root-token}
+      VAULT_SECRET_PATH: "secret/data/aegis/soar"
+      OPA_ENABLED: "true"
+      OPA_URL: "http://opa:8181"
+      ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
+      # HA Configuration — STANDBY role
+      HA_NODE_ROLE: "standby"
+      HA_HEALTH_CHECK_INTERVAL_MS: "5000"
+      HA_LEADERSHIP_TTL_S: "15"
+      # Notification (same config as active)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-mock-telegram-token}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      PAGERDUTY_ROUTING_KEY: ${PAGERDUTY_ROUTING_KEY:-mock-pagerduty-key}
+      JIRA_URL: ${JIRA_URL:-https://jira.example.com}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-mock-jira-token}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-AEGIS}
+      SMTP_HOST: ${SMTP_HOST:-mock-smtp-host}
+      EMAIL_FROM: ${EMAIL_FROM:-soc@aegis.bank}
+      EMAIL_TO_SOC: ${EMAIL_TO_SOC:-soc-team@aegis.bank}
+      # Threat Intel
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-mock-vt-api-key}
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-mock-abuseipdb-key}
+      SHODAN_API_KEY: ${SHODAN_API_KEY:-mock-shodan-key}
+      SCHEDULER_ENABLED: "false"
+      PREKILL_ENABLED: "true"
+      PREKILL_DEFAULT_TTL_MINUTES: "60"
+    volumes:
+      - ../agent-layer-2:/app/agent-layer-2:ro
+    depends_on:
+      soar-orchestrator:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Aegis SOAR Action Worker STANDBY (HA Failover)
+  # ============================================
+  soar-action-worker-standby:
+    build:
+      context: ../soar-engine
+      dockerfile: Dockerfile
+    container_name: aegis-soar-action-worker-standby
+    command: ["python", "action_worker.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      DASHBOARD_API_URL: http://dashboard-backend:8082/api
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
+      ACTION_EXECUTION_DELAY_SECONDS: "2.0"
+      VAULT_ENABLED: "true"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: ${VAULT_ROOT_TOKEN:-aegis-vault-root-token}
+      VAULT_SECRET_PATH: "secret/data/aegis/soar"
+      OPA_ENABLED: "true"
+      OPA_URL: "http://opa:8181"
+      ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
+      FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
+      PREKILL_ENABLED: "true"
+      PREKILL_DEFAULT_TTL_MINUTES: "60"
+    depends_on:
+      soar-action-worker:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
     networks:
       - aegis-network
 
