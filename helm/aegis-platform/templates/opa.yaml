@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: OPA-policies
+data:
+  authz.rego: |
+    package system.authz
+    import future.keywords.if
+    default allow := false
+    allow if {
+        expected_token := opa.runtime().env.AEGIS_SECURITY_SYNC_TOKEN
+        expected_token != ""
+        expected_token != null
+        input.identity == expected_token
+    }
+  soar.rego: |
+    package aegis.soar.policy
+    default allow = false
+    allow {
+        not deny_actions
+    }
+    deny_actions {
+        input.action_type == "block_ip"
+        is_critical_ip(input.target)
+    }
+    deny_actions {
+        input.action_type == "quarantine_host"
+        is_critical_host(input.target)
+    }
+    deny_actions {
+        input.phase == "contain"
+        input.approval_mode == "AUTO"
+        input.risk_score < 5.0
+    }
+    is_critical_ip(ip) {
+        critical_ips := ["10.0.0.1", "10.0.0.2", "192.168.1.1", "192.168.1.254"]
+        critical_ips[_] == ip
+    }
+    is_critical_host(host) {
+        critical_hosts := ["DB-PROD-01", "DC-PROD-AD", "CORE-BANK-GW"]
+        critical_hosts[_] == host
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: OPA
+  labels:
+    app: OPA
+spec:
+  selector:
+    app: OPA
+  ports:
+    - port: 8181
+      targetPort: 8181
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: OPA
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: OPA
+  template:
+    metadata:
+      labels:
+        app: OPA
+    spec:
+      containers:
+        - name: OPA
+          image: openpolicyagent/opa:0.61.0-static
+          env:
+            - name: AEGIS_SECURITY_SYNC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+          command:
+            - "run"
+            - "--server"
+            - "--log-level=info"
+            - "--authentication=token"
+            - "--authorization=basic"
+            - "/policies"
+          ports:
+            - containerPort: 8181
+              name: api
+          volumeMounts:
+            - name: policies-volume
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: policies-volume
+          configMap:
+            name: OPA-policies

@@ -1,0 +1,71 @@
+# Default values for aegis-platform.
+# This is a YAML-formatted file.
+
+# Choose environment: "local" (deploy DBs in K8s) or "aws" (use managed cloud DBs)
+environment: "local"
+
+# Common configuration secrets
+secrets:
+  postgresPassword: "postgres-prod-secret-1234"
+  jwtSecret: "aegis-jwt-secure-signing-key-high-entropy-12345"
+  aegisSecuritySyncToken: "aegis-sync-token-9876-xyz"
+  dashscopeApiKey: "mock-dashscope-api-key-value"
+
+# AWS Configuration (Only used when environment is "aws")
+aws:
+  rdsEndpoint: "aegis-rds-postgres.c123456789.us-east-1.rds.amazonaws.com"
+  mskBrokers: "b-1.aegismsk.us-east-1.kafka.amazonaws.com:9092,b-2.aegismsk.us-east-1.kafka.amazonaws.com:9092,b-3.aegismsk.us-east-1.kafka.amazonaws.com:9092"
+  elasticacheEndpoint: "aegis-cache.c123456.use1.cache.amazonaws.com"
+  postgresDb: "aegis"
+
+# Ingress & Gateway configuration
+gateway:
+  type: NodePort # NodePort for local desktop, LoadBalancer for AWS
+  nodePort: 30080
+
+# Microservices Config
+beBackend:
+  replicaCount: 1
+  image: aegis-be-backend:latest
+  imagePullPolicy: Never
+  port: 8080
+
+feWeb:
+  replicaCount: 1
+  image: aegis-fe-web:latest
+  imagePullPolicy: Never
+  port: 3000
+
+dashboardBackend:
+  replicaCount: 1
+  image: aegis-dashboard-backend:latest
+  imagePullPolicy: Never
+  port: 8082
+  simulationEnabled: "false"
+
+dashboardFrontend:
+  replicaCount: 1
+  image: aegis-dashboard-frontend:latest
+  imagePullPolicy: Never
+  port: 3001
+
+soarEngine:
+  image: aegis-soar-engine:latest
+  imagePullPolicy: Never
+  autopilotEnabled: "true"
+  dryRunMode: "false"
+
+stagingSandbox:
+  image: aegis-staging-sandbox:latest
+  imagePullPolicy: Never
+  port: 8095
+  fortinetToken: "aegis-fortinet-token-123456"
+  crowdstrikeSecret: "mock-crowdstrike-client-secret"
+  entraSecret: "mock-client-secret"
+
+logParser:
+  image: aegis-log-parser:latest
+  imagePullPolicy: Never
+
+vault:
+  rootToken: "aegis-vault-root-token"
