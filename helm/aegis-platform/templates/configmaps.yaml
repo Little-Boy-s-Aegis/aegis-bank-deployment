@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-l2-config
+data:
+  layer2_orchestrator_system_prompt.md: |
+{{ .Files.Get "configs/layer2_orchestrator_system_prompt.md" | indent 4 }}
+  layer2_orchestrator_output_schema.json: |
+{{ .Files.Get "configs/layer2_orchestrator_output_schema.json" | indent 4 }}
+  orchestrator_l2_playbooks.md: |
+{{ .Files.Get "configs/orchestrator_l2_playbooks.md" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+data:
+  fluent-bit.conf: |
+{{ .Files.Get "configs/fluent-bit.conf" | indent 4 }}
+  parsers.conf: |
+{{ .Files.Get "configs/parsers.conf" | indent 4 }}
+  filter_threats.lua: |
+{{ .Files.Get "configs/filter_threats.lua" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-gateway-config
+data:
+  default.conf: |
+{{ .Files.Get "configs/default.conf" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-config
+data:
+  {{- if eq .Values.environment "aws" }}
+  AWS_RDS_ENDPOINT: {{ .Values.aws.rdsEndpoint | quote }}
+  AWS_MSK_BROKERS: {{ .Values.aws.mskBrokers | quote }}
+  AWS_ELASTICACHE_ENDPOINT: {{ .Values.aws.elasticacheEndpoint | quote }}
+  POSTGRES_DB: {{ .Values.aws.postgresDb | quote }}
+  {{- else }}
+  AWS_RDS_ENDPOINT: "postgres"
+  AWS_MSK_BROKERS: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+  AWS_ELASTICACHE_ENDPOINT: "redis"
+  POSTGRES_DB: "aegis"
+  {{- end }}

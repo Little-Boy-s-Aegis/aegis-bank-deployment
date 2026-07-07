@@ -1,0 +1,262 @@
+{
+  "schema_version": "littleboy.soc.layer2.orchestrator_decision.v7",
+  "timestamp": "ISO8601",
+  "orchestrator": {
+    "orchestrator_id": "layer2_orchestrator_soar",
+    "orchestrator_name": "Layer 2 - Orchestrator / SOAR Decision Engine",
+    "mode": "correlation_context_policy_playbook_execution"
+  },
+  "input_summary": {
+    "incident_id": null,
+    "source_topic": "sensor-results-topic",
+    "output_topic": "incidents-topic",
+    "layer1_schema_version": "littleboy.soc.layer1.agent_finding.v4",
+    "findings": [
+      {
+        "agent_id": null,
+        "threat_detected": false,
+        "capec_id": "",
+        "mitre_attack_id": "",
+        "raw_evidence": ""
+      }
+    ]
+  },
+  "correlation": {
+    "correlation_state": "confirmed|partial|conflict|none",
+    "same_attack_assessment": false,
+    "correlated_agent_ids": [],
+    "conflicting_agent_ids": [],
+    "correlation_keys": {
+      "entities": [],
+      "time_window": {
+        "start": null,
+        "end": null
+      },
+      "mitre_attack_ids": [],
+      "capec_ids": [],
+      "evidence_terms": []
+    },
+    "correlation_rationale": []
+  },
+  "l2_independent_verification": {
+    "performed": false,
+    "required": false,
+    "verification_state": "confirmed|not_confirmed|contradicted|insufficient|not_required",
+    "verification_sources": [
+      {
+        "source_type": "clean_log|raw_log|siem|edr|waf|api_gateway|iam|network|database|threat_intel|vector_db|asset_inventory|opa|other",
+        "source_ref": null,
+        "matched_observation": null
+      }
+    ],
+    "log_queries_or_refs": [],
+    "confirmed_entities": [],
+    "contradicting_evidence": [],
+    "verification_strength": "strong|supported|weak|none|contradicted",
+    "rationale": []
+  },
+  "verified_case": {
+    "threat_confirmed": false,
+    "title": null,
+    "summary": null,
+    "verified_techniques": [],
+    "expanded_techniques": [],
+    "verified_tactics": [],
+    "verified_capec": [],
+    "entities": {
+      "users": [],
+      "accounts_masked": [],
+      "hosts": [],
+      "ips": [],
+      "sessions": [],
+      "api_endpoints": [],
+      "transactions_masked": [],
+      "devices": [],
+      "data_objects_masked": []
+    },
+    "evidence_refs": [],
+    "assumptions": []
+  },
+  "scoring": {
+    "score_source": "risk_scoring/attack_vector_risk_scores.md|risk_scoring/capec_risk_scores.md|fallback",
+    "score_source_ref": null,
+    "score_table_calibration_reason": null,
+    "base_threat_score_0_10": 0.0,
+    "asset_criticality_multiplier": 1.0,
+    "raw_context_risk_0_10": 0.0,
+    "risk_cap_applied": false,
+    "risk_cap_0_10": null,
+    "risk_cap_reason": null,
+    "final_risk_score_0_10": 0.0,
+    "priority": "critical|high|medium|low|info",
+    "response_mode": "MONITOR|CONTAIN|CONTAIN_AND_HUNT|CRISIS",
+    "score_rationale": []
+  },
+  "banking_impact": {
+    "swift_or_payment_involved": false,
+    "core_banking_involved": false,
+    "customer_data_involved": false,
+    "atm_or_hsm_involved": false,
+    "privileged_identity_involved": false,
+    "backup_or_recovery_involved": false,
+    "security_control_involved": false,
+    "fraud_control_involved": false,
+    "business_criticality": "critical|high|medium|low|unknown",
+    "impact_rationale": []
+  },
+  "policy_guardrails": {
+    "opa_required": true,
+    "opa_result": "allow|deny|partial|not_evaluated",
+    "policy_decision_refs": [],
+    "red_lines_triggered": [],
+    "whitelist_hits": [],
+    "manual_only_reasons": [],
+    "time_bound_required": true,
+    "rollback_required": true
+  },
+  "automation_control": {
+    "soc_autopilot_enabled": false,
+    "mode": "suggest_only|execute",
+    "default_mode": "suggest_only",
+    "auto_containment_path": "none|l2_verified",
+    "execution_window": {
+      "enabled": false,
+      "timezone": "Asia/Ho_Chi_Minh",
+      "start_local": "08:00",
+      "end_local": "20:00",
+      "in_window": false,
+      "outside_window_behavior": "suggest_only_and_report"
+    },
+    "next_review_minutes": 120,
+    "auto_containment_eligible": false,
+    "containment_gate_rationale": [],
+    "auto_unblock_after_mins": null,
+    "rollback_support": true
+  },
+  "playbook_routing": {
+    "activated_playbooks": [
+      {
+        "playbook_id": null,
+        "trigger_type": "technique|parent_technique|tactic|banking_flag|anomaly|prediction",
+        "trigger_value": null,
+        "mode": "MONITOR|CONTAIN|CONTAIN_AND_HUNT|CRISIS",
+        "rationale": null
+      }
+    ],
+    "not_selected": []
+  },
+  "decision": {
+    "final_decision": "no_action|suggest_only|auto_execute|queue_approval|manual_escalation|needs_more_evidence",
+    "execution_mode": "suggest_only|execute",
+    "risk_response_floor": {
+      "triggered": false,
+      "threshold": 6.0,
+      "completed": false,
+      "required_actions": [
+        "preserve_logs",
+        "raise_monitoring",
+        "add_watchlist",
+        "create_hunt",
+        "open_ticket",
+        "notify_soc"
+      ],
+      "performed_actions": [],
+      "blocked_actions": [],
+      "rationale": [],
+      "execution_note": null
+    },
+    "justification": null,
+    "summary_for_soc": null
+  },
+  "actions": [
+    {
+      "action_id": null,
+      "phase": "preserve|contain|hunt|recover|notify|predict",
+      "action_type": "preserve_logs|add_watchlist|raise_monitoring|create_hunt|block_ip|block_domain|deploy_waf_virtual_patch|quarantine_host|force_logout|disable_account|limit_network|revoke_access|open_ticket|notify_soc|other",
+      "target": {
+        "type": "ip|domain|host|user|account|session|api_endpoint|waf_rule|ticket|dashboard|other",
+        "value_masked": null
+      },
+      "approval_mode": "AUTO|APPROVAL_REQUIRED|MANUAL_ONLY",
+      "status": "suggested|ready_for_execution|executed|queued_for_policy_check|queued_for_approval|blocked_by_policy|manual_only|not_applicable|failed|rolled_back",
+      "ttl_minutes": null,
+      "expires_at": null,
+      "rollback_plan": null,
+      "evidence_refs": [],
+      "playbook_source": null,
+      "rationale": null,
+      "risk_if_wrong": "low|medium|high|critical"
+    }
+  ],
+  "predictive_defense": {
+    "predicted_techniques": [
+      {
+        "technique_id": null,
+        "technique_name": null,
+        "source": "mitre_prediction_chain|same_capec_family|generic_kill_chain",
+        "why_likely": null,
+        "priority": "high|medium|low"
+      }
+    ],
+    "temporary_detections": [],
+    "watch_for_next": []
+  },
+  "output_and_notification": {
+    "suggested_actions": [],
+    "executed_actions": [],
+    "notification_targets": [
+      "soc_dashboard",
+      "alert_notification",
+      "telegram_teams",
+      "email",
+      "jira"
+    ],
+    "ticket_payload": {
+      "title": null,
+      "priority": null,
+      "body": null,
+      "labels": []
+    }
+  },
+  "soc_feedback_controls": {
+    "allowed_actions": [
+      "confirm",
+      "undo",
+      "rollback",
+      "modify",
+      "extend_investigation",
+      "comment"
+    ],
+    "callback_required": true,
+    "callback_channel": "api_call"
+  },
+  "audit": {
+    "immutable_log_required": true,
+    "audit_events": [
+      {
+        "event_type": "decision|policy_check|action|rollback|notification|human_approval|soc_feedback",
+        "event_time": null,
+        "actor": "layer2_orchestrator_soar",
+        "command_signature_ref": null,
+        "details": null,
+        "result": null
+      }
+    ],
+    "compliance_tags": [
+      "ISO27001",
+      "PCI-DSS"
+    ]
+  },
+  "safety": {
+    "prompt_injection_observed": false,
+    "prompt_injection_evidence_masked": [],
+    "log_instruction_ignored": true,
+    "sensitive_values_masked": true,
+    "no_destructive_action_selected": true
+  },
+  "quality": {
+    "missing_fields": [],
+    "limitations": [],
+    "requires_human_review": false
+  }
+}

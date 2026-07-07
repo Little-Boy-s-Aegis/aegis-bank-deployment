@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: aws-patches.yaml
+
+configMapGenerator:
+  - name: aws-config
+    literals:
+      - AWS_RDS_ENDPOINT=aegis-rds-postgres.c123456789.us-east-1.rds.amazonaws.com
+      - AWS_MSK_BROKERS=b-1.aegismsk.us-east-1.kafka.amazonaws.com:9092,b-2.aegismsk.us-east-1.kafka.amazonaws.com:9092,b-3.aegismsk.us-east-1.kafka.amazonaws.com:9092
+      - AWS_ELASTICACHE_ENDPOINT=aegis-cache.c123456.use1.cache.amazonaws.com
+      - POSTGRES_DB=aegis
+
+secretGenerator:
+  - name: aegis-secrets
+    behavior: merge
+    literals:
+      - postgres-password=ENTER_YOUR_SECURE_AWS_RDS_PASSWORD_HERE
+      - jwt-secret=ENTER_YOUR_SECURE_PRODUCTION_JWT_SECRET_HERE
+      - aegis-security-sync-token=ENTER_YOUR_SECURE_PRODUCTION_SYNC_TOKEN_HERE
+      - dashscope-api-key=ENTER_YOUR_REAL_DASHSCOPE_API_KEY_HERE
+
+generatorOptions:
+  disableNameSuffixHash: true

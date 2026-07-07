@@ -1,0 +1,84 @@
+categories:
+  - Security
+  - Banking
+  - SIEM
+questions:
+  - variable: environment
+    default: "local"
+    description: "Choose deployment profile: local (deploys local database and brokers in K8s) or aws (references managed AWS services)"
+    label: "Deployment Environment"
+    type: enum
+    options:
+      - "local"
+      - "aws"
+    required: true
+    group: "Target Environment"
+
+  - variable: gateway.type
+    default: "NodePort"
+    description: "Gateway Service exposing mechanism"
+    label: "API Gateway Service Type"
+    type: enum
+    options:
+      - "NodePort"
+      - "LoadBalancer"
+      - "ClusterIP"
+    required: true
+    group: "Networking Config"
+
+  - variable: secrets.postgresPassword
+    default: "postgres-prod-secret-1234"
+    description: "Password for the Postgres database master user"
+    label: "Postgres Password"
+    type: password
+    required: true
+    group: "Application Secrets"
+
+  - variable: secrets.jwtSecret
+    default: "aegis-jwt-secure-signing-key-high-entropy-12345"
+    description: "Private signing key for JWT tokens"
+    label: "JWT Secret Key"
+    type: password
+    required: true
+    group: "Application Secrets"
+
+  - variable: secrets.aegisSecuritySyncToken
+    default: "aegis-sync-token-9876-xyz"
+    description: "Internal microservice authentication token"
+    label: "Aegis Sync Token"
+    type: password
+    required: true
+    group: "Application Secrets"
+
+  - variable: secrets.dashscopeApiKey
+    default: "mock-dashscope-api-key-value"
+    description: "Alibaba Dashscope API Key for the Qwen 3.7 Plus Agent (optional)"
+    label: "Qwen API Key"
+    type: password
+    required: false
+    group: "Application Secrets"
+
+  # AWS Specifics shown conditionally (using show_if in Rancher)
+  - variable: aws.rdsEndpoint
+    default: "aegis-rds-postgres.c123456789.us-east-1.rds.amazonaws.com"
+    description: "AWS RDS PostgreSQL host endpoint"
+    label: "AWS RDS Postgres Host"
+    type: string
+    show_if: "environment=aws"
+    group: "AWS Cloud Endpoints"
+
+  - variable: aws.mskBrokers
+    default: "b-1.aegismsk.us-east-1.kafka.amazonaws.com:9092,b-2.aegismsk.us-east-1.kafka.amazonaws.com:9092"
+    description: "AWS MSK Kafka brokers string"
+    label: "AWS MSK Broker List"
+    type: string
+    show_if: "environment=aws"
+    group: "AWS Cloud Endpoints"
+
+  - variable: aws.elasticacheEndpoint
+    default: "aegis-cache.c123456.use1.cache.amazonaws.com"
+    description: "AWS ElastiCache Redis server host endpoint"
+    label: "AWS Redis Host"
+    type: string
+    show_if: "environment=aws"
+    group: "AWS Cloud Endpoints"

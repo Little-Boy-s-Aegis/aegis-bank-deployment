@@ -1,0 +1,733 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: be-backend
+spec:
+  selector:
+    app: be-backend
+  ports:
+    - port: {{ .Values.beBackend.port }}
+      targetPort: {{ .Values.beBackend.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-backend
+spec:
+  replicas: {{ .Values.beBackend.replicaCount }}
+  selector:
+    matchLabels:
+      app: be-backend
+  template:
+    metadata:
+      labels:
+        app: be-backend
+    spec:
+      containers:
+        - name: be-backend
+          image: {{ .Values.beBackend.image }}
+          imagePullPolicy: {{ .Values.beBackend.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            {{- else }}
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres:5432/aegis"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            {{- end }}
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "postgres"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: jwt-secret
+            - name: JWT_EXPIRATION
+              value: "86400000"
+            - name: AEGIS_SECURITY_SYNC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: LOGGING_FILE_NAME
+              value: "/var/log/bank/application.log"
+          ports:
+            - containerPort: {{ .Values.beBackend.port }}
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/bank
+      volumes:
+        - name: shared-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fe-web
+spec:
+  selector:
+    app: fe-web
+  ports:
+    - port: {{ .Values.feWeb.port }}
+      targetPort: {{ .Values.feWeb.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fe-web
+spec:
+  replicas: {{ .Values.feWeb.replicaCount }}
+  selector:
+    matchLabels:
+      app: fe-web
+  template:
+    metadata:
+      labels:
+        app: fe-web
+    spec:
+      containers:
+        - name: fe-web
+          image: {{ .Values.feWeb.image }}
+          imagePullPolicy: {{ .Values.feWeb.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.feWeb.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-backend
+spec:
+  selector:
+    app: dashboard-backend
+  ports:
+    - port: {{ .Values.dashboardBackend.port }}
+      targetPort: {{ .Values.dashboardBackend.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+spec:
+  replicas: {{ .Values.dashboardBackend.replicaCount }}
+  selector:
+    matchLabels:
+      app: dashboard-backend
+  template:
+    metadata:
+      labels:
+        app: dashboard-backend
+    spec:
+      containers:
+        - name: dashboard-backend
+          image: {{ .Values.dashboardBackend.image }}
+          imagePullPolicy: {{ .Values.dashboardBackend.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            {{- else }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: AEGIS_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: BANK_BACKEND_URL
+              value: "http://be-backend:8080"
+            - name: AEGIS_SIMULATION_ENABLED
+              value: {{ .Values.dashboardBackend.simulationEnabled | quote }}
+          ports:
+            - containerPort: {{ .Values.dashboardBackend.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-frontend
+spec:
+  selector:
+    app: dashboard-frontend
+  ports:
+    - port: {{ .Values.dashboardFrontend.port }}
+      targetPort: {{ .Values.dashboardFrontend.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-frontend
+spec:
+  replicas: {{ .Values.dashboardFrontend.replicaCount }}
+  selector:
+    matchLabels:
+      app: dashboard-frontend
+  template:
+    metadata:
+      labels:
+        app: dashboard-frontend
+    spec:
+      containers:
+        - name: dashboard-frontend
+          image: {{ .Values.dashboardFrontend.image }}
+          imagePullPolicy: {{ .Values.dashboardFrontend.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.dashboardFrontend.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soar-orchestrator
+spec:
+  selector:
+    app: soar-orchestrator
+  ports:
+    - port: 8090
+      targetPort: 8090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soar-orchestrator
+  template:
+    metadata:
+      labels:
+        app: soar-orchestrator
+    spec:
+      containers:
+        - name: soar-orchestrator
+          image: {{ .Values.soarEngine.image }}
+          imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.aws.elasticacheEndpoint }}:6379/0"
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: DASHBOARD_API_URL
+              value: "http://dashboard-backend:8082/api"
+            - name: AEGIS_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: dashscope-api-key
+            - name: QWEN_MODEL_NAME
+              value: "qwen3-plus"
+            - name: LLM_ENABLED
+              value: "true"
+            - name: LLM_TIMEOUT_SECONDS
+              value: "10"
+            - name: SOC_AUTOPILOT_ENABLED
+              value: {{ .Values.soarEngine.autopilotEnabled | quote }}
+            - name: FORTINET_BASE_URL
+              value: "http://staging-sandbox:8095/api/v2"
+            - name: AGENT_L2_DIR
+              value: "/app/agent-layer-2"
+            - name: VAULT_ENABLED
+              value: "true"
+            - name: VAULT_ADDR
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              value: {{ .Values.vault.rootToken | quote }}
+            - name: OPA_ENABLED
+              value: "true"
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: HA_NODE_ROLE
+              value: "active"
+            - name: HA_HEALTH_CHECK_INTERVAL_MS
+              value: "5000"
+            - name: HA_LEADERSHIP_TTL_S
+              value: "15"
+            - name: SCHEDULER_ENABLED
+              value: "true"
+            - name: PREKILL_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: l2-volume
+              mountPath: /app/agent-layer-2
+      volumes:
+        - name: l2-volume
+          configMap:
+            name: aegis-l2-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-orchestrator-standby
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soar-orchestrator-standby
+  template:
+    metadata:
+      labels:
+        app: soar-orchestrator-standby
+    spec:
+      containers:
+        - name: soar-orchestrator-standby
+          image: {{ .Values.soarEngine.image }}
+          imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.aws.elasticacheEndpoint }}:6379/0"
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: DASHBOARD_API_URL
+              value: "http://dashboard-backend:8082/api"
+            - name: AEGIS_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: dashscope-api-key
+            - name: QWEN_MODEL_NAME
+              value: "qwen3-plus"
+            - name: LLM_ENABLED
+              value: "true"
+            - name: LLM_TIMEOUT_SECONDS
+              value: "10"
+            - name: SOC_AUTOPILOT_ENABLED
+              value: {{ .Values.soarEngine.autopilotEnabled | quote }}
+            - name: FORTINET_BASE_URL
+              value: "http://staging-sandbox:8095/api/v2"
+            - name: AGENT_L2_DIR
+              value: "/app/agent-layer-2"
+            - name: VAULT_ENABLED
+              value: "true"
+            - name: VAULT_ADDR
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              value: {{ .Values.vault.rootToken | quote }}
+            - name: OPA_ENABLED
+              value: "true"
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: HA_NODE_ROLE
+              value: "standby"
+            - name: HA_HEALTH_CHECK_INTERVAL_MS
+              value: "5000"
+            - name: HA_LEADERSHIP_TTL_S
+              value: "15"
+            - name: SCHEDULER_ENABLED
+              value: "false"
+            - name: PREKILL_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: l2-volume
+              mountPath: /app/agent-layer-2
+      volumes:
+        - name: l2-volume
+          configMap:
+            name: aegis-l2-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-action-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soar-action-worker
+  template:
+    metadata:
+      labels:
+        app: soar-action-worker
+    spec:
+      containers:
+        - name: soar-action-worker
+          image: {{ .Values.soarEngine.image }}
+          imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
+          command: ["python", "action_worker.py"]
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.aws.elasticacheEndpoint }}:6379/0"
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: DASHBOARD_API_URL
+              value: "http://dashboard-backend:8082/api"
+            - name: AEGIS_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: ACTION_EXECUTION_DELAY_SECONDS
+              value: "2.0"
+            - name: VAULT_ENABLED
+              value: "true"
+            - name: VAULT_ADDR
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              value: {{ .Values.vault.rootToken | quote }}
+            - name: OPA_ENABLED
+              value: "true"
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: FORTINET_BASE_URL
+              value: "http://staging-sandbox:8095/api/v2"
+            - name: PREKILL_ENABLED
+              value: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-action-worker-standby
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soar-action-worker-standby
+  template:
+    metadata:
+      labels:
+        app: soar-action-worker-standby
+    spec:
+      containers:
+        - name: soar-action-worker-standby
+          image: {{ .Values.soarEngine.image }}
+          imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
+          command: ["python", "action_worker.py"]
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.aws.elasticacheEndpoint }}:6379/0"
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
+            - name: DASHBOARD_API_URL
+              value: "http://dashboard-backend:8082/api"
+            - name: AEGIS_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: ACTION_EXECUTION_DELAY_SECONDS
+              value: "2.0"
+            - name: VAULT_ENABLED
+              value: "true"
+            - name: VAULT_ADDR
+              value: "http://vault:8200"
+            - name: VAULT_TOKEN
+              value: {{ .Values.vault.rootToken | quote }}
+            - name: OPA_ENABLED
+              value: "true"
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: FORTINET_BASE_URL
+              value: "http://staging-sandbox:8095/api/v2"
+            - name: PREKILL_ENABLED
+              value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: staging-sandbox
+spec:
+  selector:
+    app: staging-sandbox
+  ports:
+    - port: {{ .Values.stagingSandbox.port }}
+      targetPort: {{ .Values.stagingSandbox.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: staging-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: staging-sandbox
+  template:
+    metadata:
+      labels:
+        app: staging-sandbox
+    spec:
+      containers:
+        - name: staging-sandbox
+          image: {{ .Values.stagingSandbox.image }}
+          imagePullPolicy: {{ .Values.stagingSandbox.imagePullPolicy }}
+          env:
+            - name: SANDBOX_PORT
+              value: {{ .Values.stagingSandbox.port | quote }}
+            - name: AEGIS_SECURITY_SYNC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aegis-security-sync-token
+            - name: FORTINET_API_TOKEN
+              value: {{ .Values.stagingSandbox.fortinetToken | quote }}
+            - name: CROWDSTRIKE_CLIENT_SECRET
+              value: {{ .Values.stagingSandbox.crowdstrikeSecret | quote }}
+            - name: ENTRA_CLIENT_SECRET
+              value: {{ .Values.stagingSandbox.entraSecret | quote }}
+          ports:
+            - containerPort: {{ .Values.stagingSandbox.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-parser
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: log-parser
+  template:
+    metadata:
+      labels:
+        app: log-parser
+    spec:
+      containers:
+        - name: log-parser
+          image: {{ .Values.logParser.image }}
+          imagePullPolicy: {{ .Values.logParser.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            - name: REDIS_URL
+              value: "redis://{{ .Values.aws.elasticacheEndpoint }}:6379/0"
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            {{- end }}
+            - name: REDIS_ENABLED
+              value: "true"
+            - name: SOAR_FAST_PATH_TOPIC
+              value: "soar.actions.fast-path"
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: dashscope-api-key
+            - name: QWEN_MODEL_NAME
+              value: "qwen3-plus"
+            - name: LLM_ENABLED
+              value: "true"
+            - name: LLM_TIMEOUT_SECONDS
+              value: "30"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluent-bit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:3.0
+          volumeMounts:
+            - name: config
+              mountPath: /fluent-bit/etc
+            - name: shared-logs
+              mountPath: /var/log/shared
+      volumes:
+        - name: config
+          configMap:
+            name: fluent-bit-config
+        - name: shared-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gateway
+  {{- if eq .Values.environment "aws" }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  {{- end }}
+spec:
+  type: {{ .Values.gateway.type }}
+  selector:
+    app: nginx-gateway
+  ports:
+    - port: 80
+      targetPort: 80
+      {{- if and (eq .Values.gateway.type "NodePort") .Values.gateway.nodePort }}
+      nodePort: {{ .Values.gateway.nodePort }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-gateway
+  template:
+    metadata:
+      labels:
+        app: nginx-gateway
+    spec:
+      containers:
+        - name: nginx-gateway
+          image: nginx:alpine
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+            - name: htpasswd
+              mountPath: /etc/nginx/.htpasswd
+              subPath: .htpasswd
+          ports:
+            - containerPort: 80
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-gateway-config
+        - name: htpasswd
+          secret:
+            secretName: aegis-secrets
+            items:
+              - key: htpasswd
+                path: .htpasswd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+spec:
+  selector:
+    app: kafka-ui
+  ports:
+    - port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: obsidiandynamics/kafdrop:4.0.2
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BROKERCONNECT
+              value: {{ .Values.aws.mskBrokers | quote }}
+            {{- else }}
+            - name: KAFKA_BROKERCONNECT
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            {{- end }}
+            - name: JVM_OPTS
+              value: "-Xms32M -Xmx64M"
+          ports:
+            - containerPort: 9000

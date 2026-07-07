@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  labels:
+    app: vault
+spec:
+  selector:
+    app: vault
+  ports:
+    - port: 8200
+      targetPort: 8200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.15
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          command: ["vault", "server", "-dev", "-dev-root-token-id={{ .Values.vault.rootToken }}", "-dev-listen-address=0.0.0.0:8200"]
+          ports:
+            - containerPort: 8200
+              name: api
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-init-{{ .Release.Name }}
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: vault-init
+          image: alpine:latest
+          env:
+            - name: VAULT_ADDR
+              value: "http://vault:8200"
+            - name: VAULT_ROOT_TOKEN
+              value: {{ .Values.vault.rootToken | quote }}
+            - name: FORTINET_API_TOKEN
+              value: {{ .Values.stagingSandbox.fortinetToken | quote }}
+            - name: CROWDSTRIKE_CLIENT_SECRET
+              value: {{ .Values.stagingSandbox.crowdstrikeSecret | quote }}
+            - name: ENTRA_CLIENT_SECRET
+              value: {{ .Values.stagingSandbox.entraSecret | quote }}
+          command:
+            - "/bin/sh"
+            - "-c"
+            - |
+              apk add --no-cache curl jq
+              echo "Waiting for Vault to start..."
+              until curl -s $VAULT_ADDR/v1/sys/health | grep -q '"initialized":true'; do
+                sleep 2
+              done
+              echo "Vault is initialized. Provisioning secrets..."
+              
+              curl -H "X-Vault-Token: $VAULT_ROOT_TOKEN" \
+                -X POST \
+                -d '{"type":"kv-v2"}' \
+                $VAULT_ADDR/v1/sys/mounts/secret
+                
+              curl -H "X-Vault-Token: $VAULT_ROOT_TOKEN" \
+                -H "Content-Type: application/json" \
+                -X POST \
+                -d "{\"data\": {\"fortinet_token\": \"$FORTINET_API_TOKEN\", \"crowdstrike_secret\": \"$CROWDSTRIKE_CLIENT_SECRET\", \"entra_secret\": \"$ENTRA_CLIENT_SECRET\"}}" \
+                $VAULT_ADDR/v1/secret/data/aegis/soar
+              echo "Vault provisioning completed!"
