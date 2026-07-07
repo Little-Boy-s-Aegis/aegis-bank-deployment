@@ -395,13 +395,10 @@ class TestNginxSecurity(unittest.TestCase):
             has_on,
             "server_tokens is explicitly set to 'on'! This leaks nginx version info."
         )
-        if not has_explicit:
-            import warnings
-            warnings.warn(
-                "Consider adding 'server_tokens off;' explicitly to nginx config "
-                "for defense-in-depth.",
-                stacklevel=2,
-            )
+        self.assertTrue(
+            has_explicit,
+            "server_tokens off; is not explicitly configured in nginx config!"
+        )
 
     def test_nginx_blocked_paths(self):
         """Sensitive paths (Tomcat manager, .git, .env) should be blocked."""
