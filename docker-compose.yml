@@ -200,6 +200,12 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - aegis-network
 
@@ -214,7 +220,8 @@ services:
     expose:
       - "3000"
     depends_on:
-      - be-backend
+      be-backend:
+        condition: service_healthy
     networks:
       - aegis-network
 
@@ -242,6 +249,12 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8082 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
     networks:
       - aegis-network
 
@@ -256,7 +269,8 @@ services:
     expose:
       - "3001"
     depends_on:
-      - dashboard-backend
+      dashboard-backend:
+        condition: service_healthy
     networks:
       - aegis-network
 
@@ -273,11 +287,16 @@ services:
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - shared_logs:/var/log/nginx
     depends_on:
-      - fe-web
-      - be-backend
-      - dashboard-backend
-      - dashboard-frontend
-      - kafka-ui
+      fe-web:
+        condition: service_started
+      be-backend:
+        condition: service_healthy
+      dashboard-backend:
+        condition: service_healthy
+      dashboard-frontend:
+        condition: service_started
+      kafka-ui:
+        condition: service_started
     networks:
       - aegis-network
 
