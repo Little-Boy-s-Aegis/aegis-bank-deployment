@@ -270,10 +270,12 @@ class TestXSSPrevention:
 
         # Report as warning-level; many UI frameworks handle this via validation
         if violations:
-            pytest.xfail(
+            import warnings
+            warnings.warn(
                 f"Input fields without maxLength in {len(violations)} location(s) "
                 "(low severity, may be handled by validation):\n"
-                + "\n".join(f"  {v[0].relative_to(PROJECT_ROOT)}:{v[1]}" for v in violations[:10])
+                + "\n".join(f"  {v[0].relative_to(PROJECT_ROOT)}:{v[1]}" for v in violations[:10]),
+                UserWarning
             )
 
     # ---- javascript: protocol in hrefs -----------------------------------
