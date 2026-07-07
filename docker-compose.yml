@@ -535,8 +535,8 @@ services:
       context: ./staging-sandbox
       dockerfile: Dockerfile
     container_name: aegis-staging-sandbox
-    expose:
-      - "8095"
+    ports:
+      - "127.0.0.1:8095:8095"
     environment:
       - SANDBOX_PORT=8095
       - AEGIS_SECURITY_SYNC_TOKEN=${AEGIS_SECURITY_SYNC_TOKEN}
