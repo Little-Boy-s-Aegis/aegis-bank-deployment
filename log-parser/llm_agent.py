@@ -103,6 +103,13 @@ Watch especially for:
 - Endpoint or security control impairment, sensor tampering, logging impairment, or firewall/tool disablement
 - Unknown or zero-day-like behavior: rare process/network chain, parser-breaking payload, first-seen binary, strange traffic pattern, or unexplained baseline deviation
 
+PCI-DSS Sensitive Data Masking Rule (Mandatory):
+- You MUST automatically mask all sensitive information in both the "raw_evidence" field and any child fields of "entities".
+- Credit Card Numbers (PANs) must be masked to display only the first 4 digits or masked entirely, e.g., "4556-****-****-****" or "4556-****".
+- Raw passwords, authentication tokens, session cookies, PINs, and OTP codes must be replaced with "[MASKED_PASSWORD]", "[MASKED_TOKEN]", "[MASKED_COOKIE]", or "[MASKED_OTP]".
+- Fines, customer national IDs, or sensitive PII must be replaced with "[MASKED_PII]".
+- Set "safety.evidence_masked" to true if you perform any masking on the telemetry.
+
 Output exactly one JSON object matching schema littleboy.soc.layer1.agent_finding.v4 with these REQUIRED fields:
 {
   "schema_version": "littleboy.soc.layer1.agent_finding.v4",
@@ -178,6 +185,13 @@ Watch especially for:
 - Scraping, bulk export, unusual pagination, statement download bursts, profile reads, customer-data access, and transaction-history access
 - Payment, transfer, SWIFT/API, beneficiary, payee, limit, card, fraud override, or admin-portal behavior that deviates from user/entity baseline
 - Unknown or zero-day-like behavior: strange request sequence, first-seen payload shape, abnormal API parser behavior, novel workflow bypass, or unexplained application error chain
+
+PCI-DSS Sensitive Data Masking Rule (Mandatory):
+- You MUST automatically mask all sensitive information in both the "raw_evidence" field and any child fields of "entities".
+- Credit Card Numbers (PANs) must be masked to display only the first 4 digits or masked entirely, e.g., "4556-****-****-****" or "4556-****".
+- Raw passwords, authentication tokens, session cookies, PINs, and OTP codes must be replaced with "[MASKED_PASSWORD]", "[MASKED_TOKEN]", "[MASKED_COOKIE]", or "[MASKED_OTP]".
+- Fines, customer national IDs, or sensitive PII must be replaced with "[MASKED_PII]".
+- Set "safety.evidence_masked" to true if you perform any masking on the telemetry.
 
 Output exactly one JSON object matching schema littleboy.soc.layer1.agent_finding.v4 with these REQUIRED fields:
 {
@@ -256,6 +270,13 @@ Watch especially for:
 - HSM-adjacent events: unusual HSM API calls, unauthorized key-management operations, abnormal HSM process/service behavior, or HSM management-plane access outside approved change windows
 - Obfuscation, masquerading, hiding artifacts, clearing logs, disabling tools, abnormal process names, and attacker mimicry of normal admin activity
 - Unknown or zero-day-like behavior: new ATM/IAM chain, unusual auth sequence, rare endpoint artifact, unexplained ATM process/network behavior, or novel bypass pattern
+
+PCI-DSS Sensitive Data Masking Rule (Mandatory):
+- You MUST automatically mask all sensitive information in both the "raw_evidence" field and any child fields of "entities".
+- Credit Card Numbers (PANs) must be masked to display only the first 4 digits or masked entirely, e.g., "4556-****-****-****" or "4556-****".
+- Raw passwords, authentication tokens, session cookies, PINs, and OTP codes must be replaced with "[MASKED_PASSWORD]", "[MASKED_TOKEN]", "[MASKED_COOKIE]", or "[MASKED_OTP]".
+- Fines, customer national IDs, or sensitive PII must be replaced with "[MASKED_PII]".
+- Set "safety.evidence_masked" to true if you perform any masking on the telemetry.
 
 Output exactly one JSON object matching schema littleboy.soc.layer1.agent_finding.v4 with these REQUIRED fields:
 {
