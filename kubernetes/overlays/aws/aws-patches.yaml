@@ -1,0 +1,226 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+$patch: delete
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-hl
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-hl
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-1
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-2
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-3
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gateway
+metadata:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: null
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: be-backend
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://$(AWS_RDS_ENDPOINT):5432/aegis"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+          # Inject AWS configuration values
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: dashboard-backend
+          env:
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@$(AWS_RDS_ENDPOINT):5432/aegis?sslmode=require"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-orchestrator
+spec:
+  template:
+    spec:
+      containers:
+        - name: soar-orchestrator
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@$(AWS_RDS_ENDPOINT):5432/aegis?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://$(AWS_ELASTICACHE_ENDPOINT):6379/0"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-orchestrator-standby
+spec:
+  template:
+    spec:
+      containers:
+        - name: soar-orchestrator-standby
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@$(AWS_RDS_ENDPOINT):5432/aegis?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://$(AWS_ELASTICACHE_ENDPOINT):6379/0"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-action-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: soar-action-worker
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@$(AWS_RDS_ENDPOINT):5432/aegis?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://$(AWS_ELASTICACHE_ENDPOINT):6379/0"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-action-worker-standby
+spec:
+  template:
+    spec:
+      containers:
+        - name: soar-action-worker-standby
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@$(AWS_RDS_ENDPOINT):5432/aegis?sslmode=require"
+            - name: REDIS_URL
+              value: "redis://$(AWS_ELASTICACHE_ENDPOINT):6379/0"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-parser
+spec:
+  template:
+    spec:
+      containers:
+        - name: log-parser
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+            - name: REDIS_URL
+              value: "redis://$(AWS_ELASTICACHE_ENDPOINT):6379/0"
+          envFrom:
+            - configMapRef:
+                name: aws-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluent-bit
+spec:
+  template:
+    spec:
+      containers:
+        - name: fluent-bit
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "$(AWS_MSK_BROKERS)"
+          envFrom:
+            - configMapRef:
+                name: aws-config

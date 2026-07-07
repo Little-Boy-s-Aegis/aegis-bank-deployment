@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - postgres.yaml
+  - redis.yaml
+  - kafka.yaml
+  - vault.yaml
+  - opa.yaml
+  - microservices.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: aegis-l2-config
+    files:
+      - layer2_orchestrator_system_prompt.md=configs/layer2_orchestrator_system_prompt.md
+      - layer2_orchestrator_output_schema.json=configs/layer2_orchestrator_output_schema.json
+      - orchestrator_l2_playbooks.md=configs/orchestrator_l2_playbooks.md
+  - name: fluent-bit-config
+    files:
+      - fluent-bit.conf=configs/fluent-bit.conf
+      - parsers.conf=configs/parsers.conf
+      - filter_threats.lua=configs/filter_threats.lua
+  - name: nginx-gateway-config
+    files:
+      - default.conf=configs/default.conf
+
+secretGenerator:
+  - name: aegis-secrets
+    files:
+      - htpasswd=configs/.htpasswd
