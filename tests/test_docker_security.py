@@ -396,6 +396,7 @@ class TestNginxSecurity(unittest.TestCase):
             "server_tokens is explicitly set to 'on'! This leaks nginx version info."
         )
 
+
     def test_nginx_blocked_paths(self):
         """Sensitive paths (Tomcat manager, .git, .env) should be blocked."""
         # The config blocks /manager and /host-manager

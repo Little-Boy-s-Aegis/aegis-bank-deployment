@@ -540,8 +540,6 @@ class TestCSPSecurityHeaders:
             "poweredByHeader is not set to false in next.config"
         )
 
-
-
 # ========================================================================
 # Sensitive Data Exposure Tests
 # ========================================================================
