@@ -34,6 +34,19 @@ local function pattern_match(text, pattern)
     return string.find(text, pattern) ~= nil
 end
 
+local function has_unescaped_quote(text)
+    if not text then return false end
+    for i = 1, #text do
+        local c = string.sub(text, i, i)
+        if c == '"' or c == "'" then
+            if i == 1 or string.sub(text, i - 1, i - 1) ~= "\\" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function detect_threats(tag, timestamp, record)
     local raw_payload = ""
     local client_ip = "127.0.0.1"
@@ -67,16 +80,18 @@ function detect_threats(tag, timestamp, record)
         attack_type = "CHATML_TOKEN_INJECTION"
         description = "ChatML token boundary wrapper detected in payload."
     
-    -- 2. Llama/Mistral Tags: /?INST or similar tags (Lua patterns: "%[INST%]", "%[/INST%]", "%[SYS%]", "%[/SYS%]", "<<SYS>>")
-    elseif pattern_match(payload, "%[INST%]") or pattern_match(payload, "%[/INST%]") or 
-           pattern_match(payload, "%[SYS%]") or pattern_match(payload, "%[/SYS%]") or
-           pattern_match(payload, "<<SYS>>") then
+    -- 2. Llama/Mistral Tags: /?INST or similar tags (Lua equivalents for \[/?INST\], \[/?SYS\], <<SYS>>)
+    elseif pattern_match(payload_lower, "%[inst%]") or pattern_match(payload_lower, "%[/inst%]") or
+           pattern_match(payload_lower, "%[sys%]") or pattern_match(payload_lower, "%[/sys%]") or
+           pattern_match(payload_lower, "<<sys>>") then
         threat_detected = true
         attack_type = "LLM_TAG_INJECTION"
         description = "Instruction/System framing tags (Llama/Mistral) detected in payload."
     
-    -- 3. XML/System Framing: <system>...</system> style tags (Lua pattern: "<%a*system.-/.-system>")
-    elseif pattern_match(payload_lower, "<system.-/.-system>") or pattern_match(payload_lower, "<%a*system.->") or pattern_match(payload_lower, "</%a*system.->") then
+    -- 3. XML/System Framing: <system>...</system>, opening <system>, or sys-prompt markers
+    elseif pattern_match(payload_lower, "<system[^>]*>.-</system>") or
+           pattern_match(payload_lower, "<system[^>]*>") or
+           pattern_match(payload_lower, "sys%-prompt") then
         threat_detected = true
         attack_type = "SYSTEM_FRAMING_INJECTION"
         description = "XML-style System framing or system prompts detected in payload."
@@ -115,21 +130,20 @@ function detect_threats(tag, timestamp, record)
         attack_type = "SYSTEM_DEACTIVATION"
         description = "Attempt to bypass system security flags (threat_detected: false / confidence_score: 0) detected."
 
-    -- 8. Markdown Code Blocks: ```bash, ```python, etc. (Lua pattern: "```%s*%a+")
-    elseif pattern_match(payload, "```%s*%a+") then
+    -- 8. Markdown Code Blocks: triple-or-more backticks with optional language marker
+    elseif pattern_match(payload, "```+%s*[%w_-]*") then
         threat_detected = true
         attack_type = "MARKDOWN_CODE_BLOCK"
         description = "Active markdown script/code block invocation detected."
 
-    -- 9. JSON Escaping: unescaped quotes matching pattern (?<!\)" or (?<!\)'
-    -- In Lua we can detect quotes not preceded by escape character \
-    elseif pattern_match(payload, "[^\\]\"") or pattern_match(payload, "[^\\]'") then
+    -- 9. JSON Escaping: unescaped quotes matching PCRE intent (?<!\\)" or (?<!\\)'
+    elseif has_unescaped_quote(payload) then
         threat_detected = true
         attack_type = "JSON_ESCAPING"
         description = "Potential JSON structure escaping sequence detected."
 
-    -- 10. JNDI / Log4j Style: ${jndi:...} or other lookup frameworks (Lua pattern: "%${.-}")
-    elseif pattern_match(payload_lower, "%${jndi:[a-z0-9]+://.-}") or pattern_match(payload_lower, "%${.-}") then
+    -- 10. JNDI / Log4j Style: ${jndi:...} or ${[a-z:]+} lookup expressions
+    elseif pattern_match(payload_lower, "%${jndi:[a-z0-9]+://.-}") or pattern_match(payload_lower, "%${[a-z:]+}") then
         threat_detected = true
         attack_type = "JNDI_LOG4J_LOOKUP"
         description = "Active JNDI lookup expression or system environment expansion detected."

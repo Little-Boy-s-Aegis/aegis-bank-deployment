@@ -55,13 +55,13 @@ spring_log_pattern = re.compile(
 threat_rules = {
     "CHATML_TOKEN_INJECTION": re.compile(r"<\|.*?\|>"),
     "LLM_TAG_INJECTION": re.compile(r"(?i)\[/?INST\]|\[/?SYS\]|<<SYS>>"),
-    "SYSTEM_FRAMING_INJECTION": re.compile(r"(?i)<system>.*?</system>|<system>|sys-prompt"),
+    "SYSTEM_FRAMING_INJECTION": re.compile(r"(?is)<system\b[^>]*>.*?</system>|<system\b[^>]*>|sys-prompt"),
     "INSTRUCTION_OVERRIDE": re.compile(r"(?i)\b(ignore|forget|override|reset|clear)\b"),
     "PERSONA_HIJACKING": re.compile(r"(?i)\b(you\s+are\s+now|act\s+as|simulate|roleplay)\b"),
     "OUTPUT_FORCING": re.compile(r"(?i)\b(output\s+only|print\s+only|only\s+respond)\b"),
     "SYSTEM_DEACTIVATION": re.compile(r"(?i)\b(threat_detected\s*:\s*false|confidence_score\s*:\s*0)\b"),
-    "MARKDOWN_CODE_BLOCK": re.compile(r"```[a-zA-Z]*\n.*", re.DOTALL),
-    "JSON_ESCAPING": re.compile(r'[^\\]"|[^\\]\''),
+    "MARKDOWN_CODE_BLOCK": re.compile(r"`{3,}\s*[a-zA-Z0-9_-]*", re.DOTALL),
+    "JSON_ESCAPING": re.compile(r'(?<!\\)["\']'),
     "JNDI_LOG4J_LOOKUP": re.compile(r"(?i)\$\{jndi:[a-zA-Z0-9]+://.*?\}|\$\{[a-zA-Z:]+\}")
 }
 

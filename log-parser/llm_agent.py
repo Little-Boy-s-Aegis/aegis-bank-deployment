@@ -21,7 +21,9 @@ Architecture:
 """
 
 import json
+import math
 import os
+import random
 import re
 import time
 import hashlib
@@ -41,6 +43,13 @@ QWEN_BASE_URL = os.getenv(
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() == "true"
+
+def _stable_mock_embedding(text, size=1024):
+    seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+    rng = random.Random(seed)
+    vector = [rng.uniform(-1.0, 1.0) for _ in range(size)]
+    norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+    return [x / norm for x in vector]
 
 # Circuit breaker: stop calling API after N consecutive failures
 CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD", "5"))
@@ -886,6 +895,56 @@ class QwenSecurityAgent:
         )
         return self._wrap_soar_envelope(fallback, agent_key, log_record)
 
+    def _query_vector_db_context(self, text):
+        """Query Qdrant to get related CAPEC / MITRE context for LLM guidance."""
+        qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
+        api_key = DASHSCOPE_API_KEY
+            
+        try:
+            import requests
+            vector = _stable_mock_embedding(text)
+            if api_key and not api_key.startswith("mock"):
+                url = f"{QWEN_BASE_URL}/embeddings"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "text-embedding-v3",
+                    "input": text
+                }
+                resp = requests.post(url, json=payload, headers=headers, timeout=3)
+                if resp.status_code == 200:
+                    vector = resp.json()["data"][0]["embedding"]
+            
+            # Step 2: Query Qdrant
+            qdrant_search_url = f"{qdrant_url.rstrip('/')}/collections/l1_threat_intel/points/search"
+            search_payload = {
+                "vector": vector,
+                "limit": 3,
+                "with_payload": True
+            }
+            search_resp = requests.post(qdrant_search_url, json=search_payload, timeout=3)
+            if search_resp.status_code != 200:
+                return ""
+                
+            results = search_resp.json().get("result", [])
+            if not results:
+                return ""
+                
+            context_blocks = []
+            for r in results:
+                payload = r.get("payload", {})
+                context_blocks.append(
+                    f"- Related Intel: {payload.get('id')} ({payload.get('title')})\n"
+                    f"  Description: {payload.get('description')}\n"
+                    f"  Recommended Action: {payload.get('recommended_action')}\n"
+                    f"  Severity: {payload.get('severity_label')}"
+                )
+            return "\n\n--- RELATED THREAT INTEL FROM VECTOR DB ---\n" + "\n".join(context_blocks)
+        except Exception:
+            return ""
+
     def _build_telemetry_message(self, record):
         """Format a log record as a telemetry feed for the LLM agent."""
         # Build a clean, structured telemetry block
@@ -911,11 +970,17 @@ class QwenSecurityAgent:
         # Remove None values
         fields = {k: v for k, v in fields.items() if v is not None}
 
+        query_text = record.get("decodedPayload", record.get("message", ""))
+        vector_context = ""
+        if query_text:
+            vector_context = self._query_vector_db_context(query_text)
+
         return (
             "Analyze the following telemetry event and emit your finding as a single JSON object.\n\n"
             "--- BEGIN TELEMETRY ---\n"
             + json.dumps(fields, indent=2, default=str)
             + "\n--- END TELEMETRY ---"
+            + vector_context
         )
 
     def _parse_llm_output(self, raw_output, agent_config):

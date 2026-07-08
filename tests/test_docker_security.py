@@ -251,7 +251,7 @@ class TestDockerComposeSecurity(unittest.TestCase):
     def test_containers_have_healthchecks(self):
         """All critical long-running services should have health checks."""
         # One-shot / init containers are excluded
-        init_services = {"vault-init", "kafka-init"}
+        init_services = {"vault-init", "kafka-init", "vector-db-init"}
         # Frontend services that are less critical for health checks
         optional_healthcheck = {"fe-web", "dashboard-frontend", "kafka-ui", "fluent-bit",
                                 "log-parser", "soar-orchestrator", "soar-action-worker",
@@ -307,6 +307,7 @@ class TestDockerComposeSecurity(unittest.TestCase):
             "fluent-bit/filter_threats.lua",
             "vault/config",
             "opa/policies",
+            "agent-layer-1",
             "agent-layer-2",
         ]
 

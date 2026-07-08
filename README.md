@@ -123,6 +123,22 @@ docker compose logs -f
 docker compose logs -f kafka-1 kafka-2 kafka-3
 ```
 
+### View the centralized logging pipeline
+```bash
+docker compose logs -f fluent-bit log-parser
+```
+
+Fluent Bit is the Fluentd-family log forwarder used by this stack. It tails:
+- Nginx access logs from `/var/log/nginx/aegis_access.log` into `l0.input.apigw`
+- Nginx error logs from `/var/log/nginx/aegis_error.log` into `l0.input.waf`
+- Spring Boot app logs from `/var/log/bank/application.log` into `l0.input.ebanking-app`
+- cloned threat alerts into `aegis.security.events`
+
+Kafka topics are provisioned by `kafka-init` before Fluent Bit and `log-parser` start. To inspect a stream:
+```bash
+docker compose exec kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:29092 --topic l0.input.apigw --from-beginning --max-messages 5
+```
+
 ### Restart a specific service (e.g. rebuild backend changes)
 ```bash
 docker compose restart be-backend
@@ -138,4 +154,3 @@ docker compose restart be-backend
 * **API Cache Tuning**: Integrated structured `Cache-Control` header rules to ensure browser clients do not cache sensitive financial transactions or security states.
 * **GAP Agent Controls**: Configured and deployed specialist Named Agent Routers (GAP-02) and Layer 1 Dynamic Prompts (GAP-01) setups to customize telemetry collection prompts.
 * **Centralized Logging (Fluent-Bit)**: Deployed Fluent-Bit containers to ingest, parse, and structure multi-container log fields for downstream Kafka events delivery.
-

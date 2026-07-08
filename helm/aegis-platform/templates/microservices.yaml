@@ -1,4 +1,26 @@
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-logs
+spec:
+  accessModes:
+    - {{ .Values.sharedLogs.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.sharedLogs.size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fluent-bit-state
+spec:
+  accessModes:
+    - {{ .Values.fluentBit.stateAccessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.fluentBit.stateSize }}
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: be-backend
@@ -67,7 +89,8 @@ spec:
               mountPath: /var/log/bank
       volumes:
         - name: shared-logs
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: shared-logs
 ---
 apiVersion: v1
 kind: Service
@@ -285,6 +308,8 @@ spec:
               value: "true"
             - name: PREKILL_ENABLED
               value: "true"
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
           volumeMounts:
             - name: l2-volume
               mountPath: /app/agent-layer-2
@@ -376,6 +401,8 @@ spec:
               value: "false"
             - name: PREKILL_ENABLED
               value: "true"
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
           volumeMounts:
             - name: l2-volume
               mountPath: /app/agent-layer-2
@@ -447,6 +474,8 @@ spec:
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
               value: "true"
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -511,6 +540,8 @@ spec:
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
               value: "true"
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
 ---
 apiVersion: v1
 kind: Service
@@ -603,6 +634,17 @@ spec:
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
               value: "30"
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
+          volumeMounts:
+            - name: agent-layer-1
+              mountPath: /app/agent-layer-1
+              readOnly: true
+      volumes:
+        - name: agent-layer-1
+          hostPath:
+            path: {{ .Values.vectorDbInit.l1HostPath | quote }}
+            type: Directory
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -620,18 +662,48 @@ spec:
     spec:
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:3.0
+          image: {{ .Values.fluentBit.image }}
+          imagePullPolicy: {{ .Values.fluentBit.imagePullPolicy }}
+          env:
+            {{- if eq .Values.environment "aws" }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.aws.mskBrokers | quote }}
+            {{- else }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.fluentBit.metricsPort }}
+              name: http-metrics
           volumeMounts:
             - name: config
               mountPath: /fluent-bit/etc
             - name: shared-logs
               mountPath: /var/log/shared
+            - name: fluent-bit-state
+              mountPath: /var/lib/fluent-bit
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http-metrics
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 5
       volumes:
         - name: config
           configMap:
             name: fluent-bit-config
         - name: shared-logs
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: shared-logs
+        - name: fluent-bit-state
+          persistentVolumeClaim:
+            claimName: fluent-bit-state
 ---
 apiVersion: v1
 kind: Service
@@ -678,6 +750,8 @@ spec:
             - name: htpasswd
               mountPath: /etc/nginx/.htpasswd
               subPath: .htpasswd
+            - name: shared-logs
+              mountPath: /var/log/nginx
           ports:
             - containerPort: 80
       volumes:
@@ -690,6 +764,9 @@ spec:
             items:
               - key: htpasswd
                 path: .htpasswd
+        - name: shared-logs
+          persistentVolumeClaim:
+            claimName: shared-logs
 ---
 apiVersion: v1
 kind: Service

@@ -64,6 +64,7 @@ TOPICS=(
   # --------------------------------------------------
   # SOAR Decisions & Action Queue (v7 Microservices)
   # --------------------------------------------------
+  "aegis.security.events"
   "soar.decisions"
   "soar.actions.queued"
 
@@ -89,5 +90,5 @@ for topic in "${TOPICS[@]}"; do
 done
 
 echo "=================================================="
-echo "  All 33 Kafka topics initialized successfully!   "
+echo "  All ${#TOPICS[@]} Kafka topics initialized successfully!   "
 echo "=================================================="

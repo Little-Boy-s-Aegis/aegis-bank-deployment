@@ -43,6 +43,47 @@ services:
       - aegis-network
 
   # ============================================
+  # Qdrant Vector Database
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aegis-qdrant
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aegis-network
+
+  # ============================================
+  # Vector DB One-shot Bootstrap
+  # ============================================
+  vector-db-init:
+    build:
+      context: ../soar-engine
+      dockerfile: Dockerfile
+    container_name: aegis-vector-db-init
+    entrypoint: ["python", "ingest_to_vector_db.py"]
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+    volumes:
+      - ../agent-layer-1:/agent-layer-1:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - aegis-network
+
+  # ============================================
   # Apache Kafka KRaft HA Cluster (3-Node)
   # Combined broker+controller mode
   # Tolerates 1 node failure
@@ -307,11 +348,16 @@ services:
   fluent-bit:
     image: fluent/fluent-bit:3.0
     container_name: aegis-fluent-bit
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:29092,kafka-2:29092,kafka-3:29092
+    expose:
+      - "2020"
     volumes:
       - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
       - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
       - ./fluent-bit/filter_threats.lua:/fluent-bit/etc/filter_threats.lua:ro
       - shared_logs:/var/log/shared
+      - fluentbit_state:/var/lib/fluent-bit
     depends_on:
       kafka-1:
         condition: service_healthy
@@ -319,6 +365,14 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/fluent-bit/bin/fluent-bit", "--version"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - aegis-network
 
@@ -349,10 +403,15 @@ services:
       LLM_ENABLED: ${LLM_ENABLED:-true}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      QDRANT_URL: http://qdrant:6333
     volumes:
       - ./backups/raw-logs:/app/raw-logs
       - ../agent-layer-1:/app/agent-layer-1:ro
     depends_on:
+      qdrant:
+        condition: service_healthy
+      vector-db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       kafka-1:
@@ -361,6 +420,8 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - aegis-network
 
@@ -434,9 +495,14 @@ services:
       # PRE-KILL Monitor
       PREKILL_ENABLED: "true"
       PREKILL_DEFAULT_TTL_MINUTES: "60"
+      QDRANT_URL: http://qdrant:6333
     volumes:
       - ../agent-layer-2:/app/agent-layer-2:ro
     depends_on:
+      qdrant:
+        condition: service_healthy
+      vector-db-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -486,7 +552,10 @@ services:
       # PRE-KILL Monitor
       PREKILL_ENABLED: "true"
       PREKILL_DEFAULT_TTL_MINUTES: "60"
+      QDRANT_URL: http://qdrant:6333
     depends_on:
+      qdrant:
+        condition: service_healthy
       redis:
         condition: service_healthy
       dashboard-backend:
@@ -555,9 +624,14 @@ services:
       SCHEDULER_ENABLED: "false"
       PREKILL_ENABLED: "true"
       PREKILL_DEFAULT_TTL_MINUTES: "60"
+      QDRANT_URL: http://qdrant:6333
     volumes:
       - ../agent-layer-2:/app/agent-layer-2:ro
     depends_on:
+      qdrant:
+        condition: service_healthy
+      vector-db-init:
+        condition: service_completed_successfully
       soar-orchestrator:
         condition: service_started
       redis:
@@ -593,7 +667,10 @@ services:
       FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
       PREKILL_ENABLED: "true"
       PREKILL_DEFAULT_TTL_MINUTES: "60"
+      QDRANT_URL: http://qdrant:6333
     depends_on:
+      qdrant:
+        condition: service_healthy
       soar-action-worker:
         condition: service_started
       redis:
@@ -700,7 +777,10 @@ services:
       - CROWDSTRIKE_CLIENT_SECRET=${CROWDSTRIKE_CLIENT_SECRET:-mock-crowdstrike-client-secret}
       - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET:-mock-client-secret}
     networks:
-      - aegis-network
+      aegis-network:
+        aliases:
+          - aegis-staging-sandbox
+          - asset-inventory
 
 volumes:
   postgres_data:
@@ -715,6 +795,10 @@ volumes:
     driver: local
   shared_logs:
   vault_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  fluentbit_state:
     driver: local
 
 networks:
