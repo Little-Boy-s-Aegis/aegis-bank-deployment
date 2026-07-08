@@ -128,3 +128,14 @@ docker compose logs -f kafka-1 kafka-2 kafka-3
 docker compose restart be-backend
 ```
 *(To build from scratch after code updates: `docker compose build be-backend && docker compose up -d be-backend`)*
+
+---
+
+## 🚀 Advanced Deployment & Gateway Hardening
+
+* **Nginx Reverse Proxy Security**: Patched an Nginx config bug regarding security headers inheritance (ensuring CORS, Content-Security-Policy, and clickjacking protection headers flow correctly to downstream proxy routes). 
+* **Proxy Gateway Resilience**: Resolved Nginx DNS cache failures yielding `502 Bad Gateway` errors. Enabled dynamic name resolution for backend containers (using the Docker internal DNS resolver `127.0.0.11` with a short `valid=5s` TTL).
+* **API Cache Tuning**: Integrated structured `Cache-Control` header rules to ensure browser clients do not cache sensitive financial transactions or security states.
+* **GAP Agent Controls**: Configured and deployed specialist Named Agent Routers (GAP-02) and Layer 1 Dynamic Prompts (GAP-01) setups to customize telemetry collection prompts.
+* **Centralized Logging (Fluent-Bit)**: Deployed Fluent-Bit containers to ingest, parse, and structure multi-container log fields for downstream Kafka events delivery.
+
