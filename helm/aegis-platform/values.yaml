@@ -67,5 +67,29 @@ logParser:
   image: aegis-log-parser:latest
   imagePullPolicy: Never
 
+qdrant:
+  enabled: true
+  image: qdrant/qdrant:latest
+  imagePullPolicy: IfNotPresent
+  storageSize: 2Gi
+
+vectorDbInit:
+  enabled: true
+  image: aegis-soar-engine:latest
+  imagePullPolicy: Never
+  qwenBaseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  l1HostPath: "/run/desktop/mnt/host/d/hackathon/agent-layer-1"
+
+sharedLogs:
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+fluentBit:
+  image: fluent/fluent-bit:3.0
+  imagePullPolicy: IfNotPresent
+  metricsPort: 2020
+  stateAccessMode: ReadWriteOnce
+  stateSize: 1Gi
+
 vault:
   rootToken: "aegis-vault-root-token"

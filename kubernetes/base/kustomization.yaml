@@ -7,6 +7,8 @@ resources:
   - kafka.yaml
   - vault.yaml
   - opa.yaml
+  - qdrant.yaml
+  - vector-db-init.yaml
   - microservices.yaml
 
 generatorOptions:
@@ -31,3 +33,8 @@ secretGenerator:
   - name: aegis-secrets
     files:
       - htpasswd=configs/.htpasswd
+    literals:
+      - postgres-password=postgres-prod-secret-1234
+      - jwt-secret=aegis-jwt-secure-signing-key-high-entropy-12345
+      - aegis-security-sync-token=aegis-sync-token-9876-xyz
+      - dashscope-api-key=mock-dashscope-api-key-value

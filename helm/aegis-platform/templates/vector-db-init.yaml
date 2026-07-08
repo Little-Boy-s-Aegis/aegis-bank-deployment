@@ -1,0 +1,57 @@
+{{- if .Values.vectorDbInit.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vector-db-init
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: vector-db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: vector-db-init
+          image: {{ .Values.vectorDbInit.image }}
+          imagePullPolicy: {{ .Values.vectorDbInit.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              python - <<'PY'
+              import os
+              import time
+              import requests
+
+              url = os.getenv("QDRANT_URL", "http://qdrant:6333").rstrip("/") + "/healthz"
+              for attempt in range(60):
+                  try:
+                      response = requests.get(url, timeout=2)
+                      if response.status_code == 200:
+                          raise SystemExit(0)
+                  except Exception:
+                      pass
+                  time.sleep(2)
+              raise SystemExit("Qdrant did not become ready before vector-db-init timeout")
+              PY
+              python ingest_to_vector_db.py
+          env:
+            - name: QDRANT_URL
+              value: "http://qdrant:6333"
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: dashscope-api-key
+            - name: QWEN_BASE_URL
+              value: {{ .Values.vectorDbInit.qwenBaseUrl | quote }}
+          volumeMounts:
+            - name: agent-layer-1
+              mountPath: /agent-layer-1
+              readOnly: true
+      volumes:
+        - name: agent-layer-1
+          hostPath:
+            path: {{ .Values.vectorDbInit.l1HostPath | quote }}
+            type: Directory
+{{- end }}
