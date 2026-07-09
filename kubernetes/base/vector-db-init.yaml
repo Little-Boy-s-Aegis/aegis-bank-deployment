@@ -44,12 +44,23 @@ spec:
                   key: dashscope-api-key
             - name: QWEN_BASE_URL
               value: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            - name: AGENT_L1_DIR
+              value: "/agent-layer-1"
+            - name: AGENT_L2_DIR
+              value: "/app/agent-layer-2"
           volumeMounts:
             - name: agent-layer-1
               mountPath: /agent-layer-1
+              readOnly: true
+            - name: agent-layer-2
+              mountPath: /app/agent-layer-2
               readOnly: true
       volumes:
         - name: agent-layer-1
           hostPath:
             path: /run/desktop/mnt/host/d/hackathon/agent-layer-1
+            type: Directory
+        - name: agent-layer-2
+          hostPath:
+            path: /run/desktop/mnt/host/d/hackathon/agent-layer-2
             type: Directory

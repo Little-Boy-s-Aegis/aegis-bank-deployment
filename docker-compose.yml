@@ -74,8 +74,11 @@ services:
       QDRANT_URL: http://qdrant:6333
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      AGENT_L1_DIR: /agent-layer-1
+      AGENT_L2_DIR: /app/agent-layer-2
     volumes:
       - ../agent-layer-1:/agent-layer-1:ro
+      - ../agent-layer-2:/app/agent-layer-2:ro
     depends_on:
       qdrant:
         condition: service_healthy

@@ -1,262 +1,1374 @@
 {
-  "schema_version": "littleboy.soc.layer2.orchestrator_decision.v7",
-  "timestamp": "ISO8601",
-  "orchestrator": {
-    "orchestrator_id": "layer2_orchestrator_soar",
-    "orchestrator_name": "Layer 2 - Orchestrator / SOAR Decision Engine",
-    "mode": "correlation_context_policy_playbook_execution"
-  },
-  "input_summary": {
-    "incident_id": null,
-    "source_topic": "sensor-results-topic",
-    "output_topic": "incidents-topic",
-    "layer1_schema_version": "littleboy.soc.layer1.agent_finding.v4",
-    "findings": [
-      {
-        "agent_id": null,
-        "threat_detected": false,
-        "capec_id": "",
-        "mitre_attack_id": "",
-        "raw_evidence": ""
-      }
-    ]
-  },
-  "correlation": {
-    "correlation_state": "confirmed|partial|conflict|none",
-    "same_attack_assessment": false,
-    "correlated_agent_ids": [],
-    "conflicting_agent_ids": [],
-    "correlation_keys": {
-      "entities": [],
-      "time_window": {
-        "start": null,
-        "end": null
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "littleboy.soc.layer2.orchestrator_decision.v8",
+  "title": "Project Little Boy Aegis Layer 2 Orchestrator Decision",
+  "description": "Layer 2 deterministic orchestration output. Layer 2 independently verifies Layer 1 signals, correlates findings, scores risk, applies banking policy guardrails, routes playbooks, and records defensive actions.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "littleboy.soc.layer2.orchestrator_decision.v8",
+      "description": "Schema identifier. Must always be the constant string above."
+    },
+    "timestamp": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "orchestrator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orchestrator_id": {
+          "type": "string",
+          "const": "layer2_orchestrator_soar"
+        },
+        "orchestrator_name": {
+          "type": "string",
+          "const": "Layer 2 - Orchestrator / SOAR Decision Engine"
+        },
+        "mode": {
+          "type": "string",
+          "const": "correlation_context_policy_playbook_execution"
+        }
       },
-      "mitre_attack_ids": [],
-      "capec_ids": [],
-      "evidence_terms": []
+      "required": [
+        "orchestrator_id",
+        "orchestrator_name",
+        "mode"
+      ]
     },
-    "correlation_rationale": []
-  },
-  "l2_independent_verification": {
-    "performed": false,
-    "required": false,
-    "verification_state": "confirmed|not_confirmed|contradicted|insufficient|not_required",
-    "verification_sources": [
-      {
-        "source_type": "clean_log|raw_log|siem|edr|waf|api_gateway|iam|network|database|threat_intel|vector_db|asset_inventory|opa|other",
-        "source_ref": null,
-        "matched_observation": null
-      }
-    ],
-    "log_queries_or_refs": [],
-    "confirmed_entities": [],
-    "contradicting_evidence": [],
-    "verification_strength": "strong|supported|weak|none|contradicted",
-    "rationale": []
-  },
-  "verified_case": {
-    "threat_confirmed": false,
-    "title": null,
-    "summary": null,
-    "verified_techniques": [],
-    "expanded_techniques": [],
-    "verified_tactics": [],
-    "verified_capec": [],
-    "entities": {
-      "users": [],
-      "accounts_masked": [],
-      "hosts": [],
-      "ips": [],
-      "sessions": [],
-      "api_endpoints": [],
-      "transactions_masked": [],
-      "devices": [],
-      "data_objects_masked": []
-    },
-    "evidence_refs": [],
-    "assumptions": []
-  },
-  "scoring": {
-    "score_source": "risk_scoring/attack_vector_risk_scores.md|risk_scoring/capec_risk_scores.md|fallback",
-    "score_source_ref": null,
-    "score_table_calibration_reason": null,
-    "base_threat_score_0_10": 0.0,
-    "asset_criticality_multiplier": 1.0,
-    "raw_context_risk_0_10": 0.0,
-    "risk_cap_applied": false,
-    "risk_cap_0_10": null,
-    "risk_cap_reason": null,
-    "final_risk_score_0_10": 0.0,
-    "priority": "critical|high|medium|low|info",
-    "response_mode": "MONITOR|CONTAIN|CONTAIN_AND_HUNT|CRISIS",
-    "score_rationale": []
-  },
-  "banking_impact": {
-    "swift_or_payment_involved": false,
-    "core_banking_involved": false,
-    "customer_data_involved": false,
-    "atm_or_hsm_involved": false,
-    "privileged_identity_involved": false,
-    "backup_or_recovery_involved": false,
-    "security_control_involved": false,
-    "fraud_control_involved": false,
-    "business_criticality": "critical|high|medium|low|unknown",
-    "impact_rationale": []
-  },
-  "policy_guardrails": {
-    "opa_required": true,
-    "opa_result": "allow|deny|partial|not_evaluated",
-    "policy_decision_refs": [],
-    "red_lines_triggered": [],
-    "whitelist_hits": [],
-    "manual_only_reasons": [],
-    "time_bound_required": true,
-    "rollback_required": true
-  },
-  "automation_control": {
-    "soc_autopilot_enabled": false,
-    "mode": "suggest_only|execute",
-    "default_mode": "suggest_only",
-    "auto_containment_path": "none|l2_verified",
-    "execution_window": {
-      "enabled": false,
-      "timezone": "Asia/Ho_Chi_Minh",
-      "start_local": "08:00",
-      "end_local": "20:00",
-      "in_window": false,
-      "outside_window_behavior": "suggest_only_and_report"
-    },
-    "next_review_minutes": 120,
-    "auto_containment_eligible": false,
-    "containment_gate_rationale": [],
-    "auto_unblock_after_mins": null,
-    "rollback_support": true
-  },
-  "playbook_routing": {
-    "activated_playbooks": [
-      {
-        "playbook_id": null,
-        "trigger_type": "technique|parent_technique|tactic|banking_flag|anomaly|prediction",
-        "trigger_value": null,
-        "mode": "MONITOR|CONTAIN|CONTAIN_AND_HUNT|CRISIS",
-        "rationale": null
-      }
-    ],
-    "not_selected": []
-  },
-  "decision": {
-    "final_decision": "no_action|suggest_only|auto_execute|queue_approval|manual_escalation|needs_more_evidence",
-    "execution_mode": "suggest_only|execute",
-    "risk_response_floor": {
-      "triggered": false,
-      "threshold": 6.0,
-      "completed": false,
-      "required_actions": [
-        "preserve_logs",
-        "raise_monitoring",
-        "add_watchlist",
-        "create_hunt",
-        "open_ticket",
-        "notify_soc"
-      ],
-      "performed_actions": [],
-      "blocked_actions": [],
-      "rationale": [],
-      "execution_note": null
-    },
-    "justification": null,
-    "summary_for_soc": null
-  },
-  "actions": [
-    {
-      "action_id": null,
-      "phase": "preserve|contain|hunt|recover|notify|predict",
-      "action_type": "preserve_logs|add_watchlist|raise_monitoring|create_hunt|block_ip|block_domain|deploy_waf_virtual_patch|quarantine_host|force_logout|disable_account|limit_network|revoke_access|open_ticket|notify_soc|other",
-      "target": {
-        "type": "ip|domain|host|user|account|session|api_endpoint|waf_rule|ticket|dashboard|other",
-        "value_masked": null
+    "input_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "source_topic": {
+          "type": "string"
+        },
+        "output_topic": {
+          "type": "string"
+        },
+        "layer1_schema_version": {
+          "type": "string",
+          "const": "littleboy.soc.layer1.agent_finding.v4"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "threat_detected": {
+                "type": "boolean"
+              },
+              "capec_id": {
+                "type": "string"
+              },
+              "mitre_attack_id": {
+                "type": "string"
+              },
+              "raw_evidence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "agent_id",
+              "threat_detected",
+              "capec_id",
+              "mitre_attack_id",
+              "raw_evidence"
+            ]
+          }
+        }
       },
-      "approval_mode": "AUTO|APPROVAL_REQUIRED|MANUAL_ONLY",
-      "status": "suggested|ready_for_execution|executed|queued_for_policy_check|queued_for_approval|blocked_by_policy|manual_only|not_applicable|failed|rolled_back",
-      "ttl_minutes": null,
-      "expires_at": null,
-      "rollback_plan": null,
-      "evidence_refs": [],
-      "playbook_source": null,
-      "rationale": null,
-      "risk_if_wrong": "low|medium|high|critical"
+      "required": [
+        "incident_id",
+        "source_topic",
+        "output_topic",
+        "layer1_schema_version",
+        "findings"
+      ]
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "correlation_state": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "partial",
+            "conflict",
+            "none"
+          ]
+        },
+        "same_attack_assessment": {
+          "type": "boolean"
+        },
+        "correlated_agent_ids": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "conflicting_agent_ids": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "correlation_keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "entities": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "time_window": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                },
+                "end": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                }
+              },
+              "required": [
+                "start",
+                "end"
+              ]
+            },
+            "mitre_attack_ids": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "capec_ids": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "evidence_terms": {
+              "$ref": "#/$defs/stringArray"
+            }
+          },
+          "required": [
+            "entities",
+            "time_window",
+            "mitre_attack_ids",
+            "capec_ids",
+            "evidence_terms"
+          ]
+        },
+        "unrelated_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "timestamp": {
+                "$ref": "#/$defs/nullableTimestamp"
+              },
+              "capec_id": {
+                "type": "string"
+              },
+              "mitre_attack_id": {
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "recommended_handling": {
+                "type": "string",
+                "enum": [
+                  "split_to_new_incident",
+                  "monitor_only",
+                  "drop_no_threat"
+                ]
+              }
+            },
+            "required": [
+              "agent_id",
+              "timestamp",
+              "capec_id",
+              "mitre_attack_id",
+              "reason",
+              "recommended_handling"
+            ]
+          }
+        },
+        "correlation_rationale": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "correlation_state",
+        "same_attack_assessment",
+        "correlated_agent_ids",
+        "conflicting_agent_ids",
+        "correlation_keys",
+        "unrelated_findings",
+        "correlation_rationale"
+      ]
+    },
+    "l2_independent_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "performed": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "verification_state": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "not_confirmed",
+            "contradicted",
+            "insufficient",
+            "not_required",
+            "sources_unavailable",
+            "query_timeout",
+            "stale_context",
+            "not_found"
+          ]
+        },
+        "verification_sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source_type": {
+                "type": "string",
+                "enum": [
+                  "clean_log",
+                  "raw_log",
+                  "siem",
+                  "edr",
+                  "waf",
+                  "api_gateway",
+                  "iam",
+                  "network",
+                  "database",
+                  "threat_intel",
+                  "vector_db",
+                  "asset_inventory",
+                  "opa",
+                  "other"
+                ]
+              },
+              "source_ref": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "matched_observation": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "query_status": {
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "not_found",
+                  "source_unavailable",
+                  "query_timeout",
+                  "stale",
+                  "error"
+                ]
+              },
+              "freshness_seconds": {
+                "$ref": "#/$defs/nullableNonNegativeInteger"
+              },
+              "last_seen_at": {
+                "$ref": "#/$defs/nullableTimestamp"
+              },
+              "error_ref": {
+                "$ref": "#/$defs/nullableString"
+              }
+            },
+            "required": [
+              "source_type",
+              "source_ref",
+              "matched_observation",
+              "query_status",
+              "freshness_seconds",
+              "last_seen_at",
+              "error_ref"
+            ]
+          }
+        },
+        "log_queries_or_refs": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "confirmed_entities": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "contradicting_evidence": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "verification_strength": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "supported",
+            "weak",
+            "none",
+            "contradicted"
+          ]
+        },
+        "rationale": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "performed",
+        "required",
+        "verification_state",
+        "verification_sources",
+        "log_queries_or_refs",
+        "confirmed_entities",
+        "contradicting_evidence",
+        "verification_strength",
+        "rationale"
+      ]
+    },
+    "verified_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threat_confirmed": {
+          "type": "boolean"
+        },
+        "title": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "summary": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "verified_techniques": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "expanded_techniques": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "verified_tactics": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "verified_capec": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "entities": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "users": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "accounts_masked": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "hosts": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "ips": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "sessions": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "api_endpoints": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "transactions_masked": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "devices": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "data_objects_masked": {
+              "$ref": "#/$defs/stringArray"
+            }
+          },
+          "required": [
+            "users",
+            "accounts_masked",
+            "hosts",
+            "ips",
+            "sessions",
+            "api_endpoints",
+            "transactions_masked",
+            "devices",
+            "data_objects_masked"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "assumptions": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "threat_confirmed",
+        "title",
+        "summary",
+        "verified_techniques",
+        "expanded_techniques",
+        "verified_tactics",
+        "verified_capec",
+        "entities",
+        "evidence_refs",
+        "assumptions"
+      ]
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "score_source": {
+          "type": "string",
+          "enum": [
+            "risk_scoring/attack_vector_risk_scores.md",
+            "risk_scoring/capec_risk_scores.md",
+            "fallback"
+          ]
+        },
+        "score_source_ref": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "score_table_calibration_reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "base_threat_score_0_10": {
+          "$ref": "#/$defs/riskScore"
+        },
+        "asset_criticality_multiplier": {
+          "type": "number",
+          "minimum": 0
+        },
+        "raw_context_risk_0_10": {
+          "$ref": "#/$defs/riskScore"
+        },
+        "risk_cap_applied": {
+          "type": "boolean"
+        },
+        "risk_cap_0_10": {
+          "$ref": "#/$defs/nullableRiskScore"
+        },
+        "risk_cap_reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "final_risk_score_0_10": {
+          "$ref": "#/$defs/riskScore"
+        },
+        "priority": {
+          "$ref": "#/$defs/priority"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/responseMode"
+        },
+        "score_rationale": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "score_source",
+        "score_source_ref",
+        "score_table_calibration_reason",
+        "base_threat_score_0_10",
+        "asset_criticality_multiplier",
+        "raw_context_risk_0_10",
+        "risk_cap_applied",
+        "risk_cap_0_10",
+        "risk_cap_reason",
+        "final_risk_score_0_10",
+        "priority",
+        "response_mode",
+        "score_rationale"
+      ]
+    },
+    "banking_impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "swift_or_payment_involved": {
+          "type": "boolean"
+        },
+        "core_banking_involved": {
+          "type": "boolean"
+        },
+        "customer_data_involved": {
+          "type": "boolean"
+        },
+        "atm_or_hsm_involved": {
+          "type": "boolean"
+        },
+        "privileged_identity_involved": {
+          "type": "boolean"
+        },
+        "backup_or_recovery_involved": {
+          "type": "boolean"
+        },
+        "security_control_involved": {
+          "type": "boolean"
+        },
+        "fraud_control_involved": {
+          "type": "boolean"
+        },
+        "business_criticality": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ]
+        },
+        "impact_rationale": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "swift_or_payment_involved",
+        "core_banking_involved",
+        "customer_data_involved",
+        "atm_or_hsm_involved",
+        "privileged_identity_involved",
+        "backup_or_recovery_involved",
+        "security_control_involved",
+        "fraud_control_involved",
+        "business_criticality",
+        "impact_rationale"
+      ]
+    },
+    "policy_guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "opa_required": {
+          "type": "boolean"
+        },
+        "opa_result": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny",
+            "partial",
+            "not_evaluated"
+          ]
+        },
+        "policy_decision_refs": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "red_lines_triggered": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "whitelist_hits": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "manual_only_reasons": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "time_bound_required": {
+          "type": "boolean"
+        },
+        "rollback_required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "opa_required",
+        "opa_result",
+        "policy_decision_refs",
+        "red_lines_triggered",
+        "whitelist_hits",
+        "manual_only_reasons",
+        "time_bound_required",
+        "rollback_required"
+      ]
+    },
+    "automation_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "soc_autopilot_enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "suggest_only",
+            "execute"
+          ]
+        },
+        "default_mode": {
+          "type": "string",
+          "enum": [
+            "suggest_only",
+            "execute"
+          ]
+        },
+        "auto_containment_path": {
+          "type": "string",
+          "enum": [
+            "none",
+            "l2_verified"
+          ]
+        },
+        "execution_window": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "start_local": {
+              "$ref": "#/$defs/localTime"
+            },
+            "end_local": {
+              "$ref": "#/$defs/localTime"
+            },
+            "in_window": {
+              "type": "boolean"
+            },
+            "outside_window_behavior": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "enabled",
+            "timezone",
+            "start_local",
+            "end_local",
+            "in_window",
+            "outside_window_behavior"
+          ]
+        },
+        "next_review_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "auto_containment_gates": {
+          "type": "object",
+          "description": "Explicit boolean gate record. auto_containment_eligible may be true only when all gate fields are true.",
+          "additionalProperties": false,
+          "properties": {
+            "threat_confirmed": {
+              "type": "boolean"
+            },
+            "l2_verification_performed": {
+              "type": "boolean"
+            },
+            "verification_confirmed": {
+              "type": "boolean"
+            },
+            "verification_supported_or_strong": {
+              "type": "boolean"
+            },
+            "risk_above_floor": {
+              "type": "boolean"
+            },
+            "opa_allow": {
+              "type": "boolean"
+            },
+            "soc_autopilot_on": {
+              "type": "boolean"
+            },
+            "execution_window_open": {
+              "type": "boolean"
+            },
+            "action_scoped_timebound_reversible": {
+              "type": "boolean"
+            },
+            "rollback_available": {
+              "type": "boolean"
+            },
+            "dangerous_now_behavior": {
+              "type": "boolean"
+            },
+            "verified_target_entity": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "threat_confirmed",
+            "l2_verification_performed",
+            "verification_confirmed",
+            "verification_supported_or_strong",
+            "risk_above_floor",
+            "opa_allow",
+            "soc_autopilot_on",
+            "execution_window_open",
+            "action_scoped_timebound_reversible",
+            "rollback_available",
+            "dangerous_now_behavior",
+            "verified_target_entity"
+          ]
+        },
+        "auto_containment_eligible": {
+          "type": "boolean"
+        },
+        "containment_gate_rationale": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "auto_unblock_after_mins": {
+          "$ref": "#/$defs/nullableNonNegativeInteger"
+        },
+        "rollback_support": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "soc_autopilot_enabled",
+        "mode",
+        "default_mode",
+        "auto_containment_path",
+        "execution_window",
+        "next_review_minutes",
+        "auto_containment_gates",
+        "auto_containment_eligible",
+        "containment_gate_rationale",
+        "auto_unblock_after_mins",
+        "rollback_support"
+      ]
+    },
+    "playbook_routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activated_playbooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "playbook_id": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "trigger_type": {
+                "type": "string",
+                "enum": [
+                  "technique",
+                  "parent_technique",
+                  "tactic",
+                  "banking_flag",
+                  "anomaly",
+                  "prediction"
+                ]
+              },
+              "trigger_value": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "mode": {
+                "$ref": "#/$defs/responseMode"
+              },
+              "rationale": {
+                "$ref": "#/$defs/nullableString"
+              }
+            },
+            "required": [
+              "playbook_id",
+              "trigger_type",
+              "trigger_value",
+              "mode",
+              "rationale"
+            ]
+          }
+        },
+        "not_selected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "playbook_id": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "reason": {
+                "$ref": "#/$defs/nullableString"
+              }
+            },
+            "required": [
+              "playbook_id",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "activated_playbooks",
+        "not_selected"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "final_decision": {
+          "type": "string",
+          "enum": [
+            "no_action",
+            "suggest_only",
+            "auto_execute",
+            "queue_approval",
+            "manual_escalation",
+            "needs_more_evidence"
+          ]
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": [
+            "suggest_only",
+            "execute"
+          ]
+        },
+        "risk_response_floor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "triggered": {
+              "type": "boolean"
+            },
+            "threshold": {
+              "$ref": "#/$defs/riskScore"
+            },
+            "completed": {
+              "type": "boolean"
+            },
+            "required_actions": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "performed_actions": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "blocked_actions": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "rationale": {
+              "$ref": "#/$defs/stringArray"
+            },
+            "execution_note": {
+              "$ref": "#/$defs/nullableString"
+            }
+          },
+          "required": [
+            "triggered",
+            "threshold",
+            "completed",
+            "required_actions",
+            "performed_actions",
+            "blocked_actions",
+            "rationale",
+            "execution_note"
+          ]
+        },
+        "justification": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "summary_for_soc": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "required": [
+        "final_decision",
+        "execution_mode",
+        "risk_response_floor",
+        "justification",
+        "summary_for_soc"
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "predictive_defense": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicted_techniques": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "technique_id": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "technique_name": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "mitre_prediction_chain",
+                  "same_capec_family",
+                  "generic_kill_chain"
+                ]
+              },
+              "why_likely": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              }
+            },
+            "required": [
+              "technique_id",
+              "technique_name",
+              "source",
+              "why_likely",
+              "priority"
+            ]
+          }
+        },
+        "temporary_detections": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "watch_for_next": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "predicted_techniques",
+        "temporary_detections",
+        "watch_for_next"
+      ]
+    },
+    "output_and_notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suggested_actions": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "executed_actions": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "notification_targets": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "ticket_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "priority": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/priority"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "body": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "labels": {
+              "$ref": "#/$defs/stringArray"
+            }
+          },
+          "required": [
+            "title",
+            "priority",
+            "body",
+            "labels"
+          ]
+        }
+      },
+      "required": [
+        "suggested_actions",
+        "executed_actions",
+        "notification_targets",
+        "ticket_payload"
+      ]
+    },
+    "soc_feedback_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "undo",
+              "rollback",
+              "modify",
+              "extend_investigation",
+              "comment"
+            ]
+          }
+        },
+        "callback_required": {
+          "type": "boolean"
+        },
+        "callback_channel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowed_actions",
+        "callback_required",
+        "callback_channel"
+      ]
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "immutable_log_required": {
+          "type": "boolean"
+        },
+        "audit_events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "decision",
+                  "policy_check",
+                  "action",
+                  "rollback",
+                  "notification",
+                  "human_approval",
+                  "soc_feedback"
+                ]
+              },
+              "event_time": {
+                "$ref": "#/$defs/nullableTimestamp"
+              },
+              "actor": {
+                "type": "string"
+              },
+              "command_signature_ref": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "details": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "result": {
+                "$ref": "#/$defs/nullableString"
+              }
+            },
+            "required": [
+              "event_type",
+              "event_time",
+              "actor",
+              "command_signature_ref",
+              "details",
+              "result"
+            ]
+          }
+        },
+        "compliance_tags": {
+          "$ref": "#/$defs/stringArray"
+        }
+      },
+      "required": [
+        "immutable_log_required",
+        "audit_events",
+        "compliance_tags"
+      ]
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prompt_injection_observed": {
+          "type": "boolean"
+        },
+        "prompt_injection_evidence_masked": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "log_instruction_ignored": {
+          "type": "boolean"
+        },
+        "sensitive_values_masked": {
+          "type": "boolean"
+        },
+        "no_destructive_action_selected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "prompt_injection_observed",
+        "prompt_injection_evidence_masked",
+        "log_instruction_ignored",
+        "sensitive_values_masked",
+        "no_destructive_action_selected"
+      ]
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "missing_fields": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "limitations": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "requires_human_review": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "missing_fields",
+        "limitations",
+        "requires_human_review"
+      ]
     }
+  },
+  "required": [
+    "schema_version",
+    "timestamp",
+    "orchestrator",
+    "input_summary",
+    "correlation",
+    "l2_independent_verification",
+    "verified_case",
+    "scoring",
+    "banking_impact",
+    "policy_guardrails",
+    "automation_control",
+    "playbook_routing",
+    "decision",
+    "actions",
+    "predictive_defense",
+    "output_and_notification",
+    "soc_feedback_controls",
+    "audit",
+    "safety",
+    "quality"
   ],
-  "predictive_defense": {
-    "predicted_techniques": [
-      {
-        "technique_id": null,
-        "technique_name": null,
-        "source": "mitre_prediction_chain|same_capec_family|generic_kill_chain",
-        "why_likely": null,
-        "priority": "high|medium|low"
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "priority": {
+          "$ref": "#/$defs/priority"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "contain",
+            "hunt",
+            "recover",
+            "notify",
+            "predict"
+          ]
+        },
+        "action_type": {
+          "type": "string",
+          "enum": [
+            "preserve_logs",
+            "add_watchlist",
+            "raise_monitoring",
+            "create_hunt",
+            "block_ip",
+            "block_domain",
+            "deploy_waf_virtual_patch",
+            "quarantine_host",
+            "force_logout",
+            "disable_account",
+            "limit_network",
+            "revoke_access",
+            "open_ticket",
+            "notify_soc",
+            "other"
+          ]
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ip",
+                "domain",
+                "host",
+                "user",
+                "account",
+                "session",
+                "api_endpoint",
+                "waf_rule",
+                "ticket",
+                "dashboard",
+                "other"
+              ]
+            },
+            "value_masked": {
+              "$ref": "#/$defs/nullableString"
+            }
+          },
+          "required": [
+            "type",
+            "value_masked"
+          ]
+        },
+        "approval_mode": {
+          "type": "string",
+          "enum": [
+            "AUTO",
+            "APPROVAL_REQUIRED",
+            "MANUAL_ONLY"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "suggested",
+            "ready_for_execution",
+            "executed",
+            "queued_for_policy_check",
+            "queued_for_approval",
+            "blocked_by_policy",
+            "manual_only",
+            "not_applicable",
+            "failed",
+            "rolled_back"
+          ]
+        },
+        "ttl_minutes": {
+          "$ref": "#/$defs/nullableNonNegativeInteger"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "rollback_plan": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "playbook_source": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "rationale": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "risk_if_wrong": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
+      },
+      "required": [
+        "action_id",
+        "timestamp",
+        "priority",
+        "phase",
+        "action_type",
+        "target",
+        "approval_mode",
+        "status",
+        "ttl_minutes",
+        "expires_at",
+        "rollback_plan",
+        "evidence_refs",
+        "playbook_source",
+        "rationale",
+        "risk_if_wrong"
+      ]
+    },
+    "localTime": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "nullableNonNegativeInteger": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "nullableRiskScore": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 10
+    },
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullableTimestamp": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ]
+    },
+    "responseMode": {
+      "type": "string",
+      "enum": [
+        "MONITOR",
+        "CONTAIN",
+        "CONTAIN_AND_HUNT",
+        "CRISIS"
+      ]
+    },
+    "riskScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
-    ],
-    "temporary_detections": [],
-    "watch_for_next": []
-  },
-  "output_and_notification": {
-    "suggested_actions": [],
-    "executed_actions": [],
-    "notification_targets": [
-      "soc_dashboard",
-      "alert_notification",
-      "telegram_teams",
-      "email",
-      "jira"
-    ],
-    "ticket_payload": {
-      "title": null,
-      "priority": null,
-      "body": null,
-      "labels": []
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
     }
-  },
-  "soc_feedback_controls": {
-    "allowed_actions": [
-      "confirm",
-      "undo",
-      "rollback",
-      "modify",
-      "extend_investigation",
-      "comment"
-    ],
-    "callback_required": true,
-    "callback_channel": "api_call"
-  },
-  "audit": {
-    "immutable_log_required": true,
-    "audit_events": [
-      {
-        "event_type": "decision|policy_check|action|rollback|notification|human_approval|soc_feedback",
-        "event_time": null,
-        "actor": "layer2_orchestrator_soar",
-        "command_signature_ref": null,
-        "details": null,
-        "result": null
-      }
-    ],
-    "compliance_tags": [
-      "ISO27001",
-      "PCI-DSS"
-    ]
-  },
-  "safety": {
-    "prompt_injection_observed": false,
-    "prompt_injection_evidence_masked": [],
-    "log_instruction_ignored": true,
-    "sensitive_values_masked": true,
-    "no_destructive_action_selected": true
-  },
-  "quality": {
-    "missing_fields": [],
-    "limitations": [],
-    "requires_human_review": false
   }
 }

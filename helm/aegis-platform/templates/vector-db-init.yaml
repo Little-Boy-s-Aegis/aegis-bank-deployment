@@ -45,13 +45,24 @@ spec:
                   key: dashscope-api-key
             - name: QWEN_BASE_URL
               value: {{ .Values.vectorDbInit.qwenBaseUrl | quote }}
+            - name: AGENT_L1_DIR
+              value: "/agent-layer-1"
+            - name: AGENT_L2_DIR
+              value: "/app/agent-layer-2"
           volumeMounts:
             - name: agent-layer-1
               mountPath: /agent-layer-1
+              readOnly: true
+            - name: agent-layer-2
+              mountPath: /app/agent-layer-2
               readOnly: true
       volumes:
         - name: agent-layer-1
           hostPath:
             path: {{ .Values.vectorDbInit.l1HostPath | quote }}
+            type: Directory
+        - name: agent-layer-2
+          hostPath:
+            path: {{ .Values.vectorDbInit.l2HostPath | quote }}
             type: Directory
 {{- end }}
