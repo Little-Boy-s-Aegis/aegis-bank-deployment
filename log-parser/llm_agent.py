@@ -45,6 +45,41 @@ LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() == "true"
 
+def _sync_s3_prefix(bucket: str, prefix: str, destination: str) -> None:
+    if not bucket or not prefix:
+        return
+    try:
+        from botocore.session import Session
+
+        os.makedirs(destination, exist_ok=True)
+        s3 = Session().create_client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        paginator = s3.get_paginator("list_objects_v2")
+        normalized_prefix = prefix if prefix.endswith("/") else f"{prefix}/"
+        for page in paginator.paginate(Bucket=bucket, Prefix=normalized_prefix):
+            for item in page.get("Contents", []):
+                key = item.get("Key", "")
+                if not key or key.endswith("/"):
+                    continue
+                relative_key = key[len(normalized_prefix):]
+                if not relative_key:
+                    continue
+                local_path = os.path.join(destination, *relative_key.split("/"))
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                s3.download_file(bucket, key, local_path)
+    except Exception as exc:
+        print(f"[LLM] Layer artifact S3 sync skipped: {exc}")
+
+
+def _prepare_layer_artifacts_from_s3() -> str:
+    local_root = os.getenv("LAYER_ARTIFACTS_LOCAL_DIR", "/tmp/aegis-layer-artifacts")
+    bucket = os.getenv("LAYER_ARTIFACTS_S3_BUCKET", "")
+    if bucket:
+        _sync_s3_prefix(bucket, os.getenv("LAYER1_ARTIFACTS_S3_PREFIX", "layer1/"), os.path.join(local_root, "layer1"))
+    return local_root
+
+
+LAYER_ARTIFACTS_LOCAL_DIR = _prepare_layer_artifacts_from_s3()
+
 def _stable_mock_embedding(text, size=1024):
     seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
     rng = random.Random(seed)
@@ -495,7 +530,7 @@ def validate_finding(finding):
 # Dynamic Prompts and Routing Rules Loading
 # ==================================================
 def load_prompt_file(agent_key: str, default_prompt: str) -> str:
-    agent_l1_dir = os.getenv("AGENT_L1_DIR", "/app/agent-layer-1")
+    agent_l1_dir = os.getenv("AGENT_L1_DIR", os.path.join(LAYER_ARTIFACTS_LOCAL_DIR, "layer1"))
     agent_paths = {
         "agent_a": os.path.join(agent_l1_dir, "agent_a", "agent_a_internal_network_edr_system_prompt.md"),
         "agent_b": os.path.join(agent_l1_dir, "agent_b", "agent_b_ebanking_api_web_ueba_system_prompt.md"),
