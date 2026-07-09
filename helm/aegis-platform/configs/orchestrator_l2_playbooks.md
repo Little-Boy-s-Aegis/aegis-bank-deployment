@@ -1,8 +1,8 @@
 # L2 Orchestrator Offline Playbook - Banking SOC
 
 Source files used as authority:
-- `mitre-attack-kb/mitre_attack_full.json`
-- `mitre-attack-kb/mitre_attack_full.md`
+- `mitre_attack_full.json`
+- `mitre_attack_full.md`
 
 This playbook is designed for an L2 SOC orchestrator that has no internet access. The orchestrator must use verified evidence, the offline MITRE ATT&CK KB, this playbook, and reasoning over attacker progression to decide what to contain, what to hunt, what to queue for approval, and what to monitor next.
 
@@ -14,9 +14,9 @@ This playbook is designed for an L2 SOC orchestrator that has no internet access
 4. Parent/subtechnique matching is mandatory. If `T1003.001` is verified, route it as both `T1003.001` and parent `T1003`. If only parent `T1003` is verified, keep all child-specific actions conditional until child evidence is known.
 5. Technique routing and tactic routing are separate. A technique may be useful in a playbook even when its official tactic is different, but the rationale must say why the behavior fits that playbook.
 6. If no technique matches but behavior is abnormal, route to `PB-ANOMALY`; absence of known MITRE mapping is not absence of attack.
-7. Execute only low/medium impact actions marked `AUTO`. Queue all high impact, critical impact, service-disruptive, customer notification, regulator notification, SWIFT, HSM, Core Banking, and DR actions for approval.
+7. Execute environment-changing low/medium impact actions marked `AUTO` only when every `automation_control.auto_containment_gates` field is true. Queue all high impact, critical impact, service-disruptive, customer notification, regulator notification, SWIFT, HSM, Core Banking, and DR actions for approval.
 8. Preserve evidence before disruptive containment when feasible.
-9. Every action must be recorded with priority, target, approval mode, status, timestamp, and playbook source.
+9. Every action must be recorded with `priority`, `timestamp`, `target`, `approval_mode`, `status`, and `playbook_source`.
 10. Use the predictive flow after every confirmed or partially confirmed alert: current technique -> MITRE `prediction_chains` -> same CAPEC/CWE family -> next kill-chain phase -> banking blast radius.
 
 ## 2. Normalization For Playbook Matching
@@ -41,7 +41,8 @@ The orchestrator should construct this internal matching object before route sel
   },
   "entities": {},
   "evidence": {},
-  "verification_state": "confirmed|not_confirmed|contradicted|insufficient|not_required",
+  "verification_state": "confirmed|not_confirmed|contradicted|insufficient|not_required|sources_unavailable|query_timeout|stale_context|not_found",
+  "verification_source_statuses": ["matched|not_found|source_unavailable|query_timeout|stale|error"],
   "verification_strength": "strong|supported|weak|none|contradicted"
 }
 ```
@@ -70,7 +71,7 @@ Approval rules:
 | Action Class | Approval Mode |
 |--------------|---------------|
 | Add IOC/watchlist, raise monitoring, create temporary detection/hunt | `AUTO` |
-| Block known malicious IP/domain with strong Layer 2 verification and narrow scope | `AUTO` |
+| Block known malicious IP/domain with supported or strong Layer 2 verification and narrow scope | `AUTO` |
 | WAF virtual patch scoped to exploit pattern | `AUTO` |
 | Reset one confirmed compromised password | `AUTO` |
 | Disable one confirmed compromised account | `AUTO` |
@@ -87,8 +88,27 @@ Risk score action gate:
 |------------------|-------------------|
 | `0.0-6.0` | Monitor, preserve, hunt, or request more evidence according to verification state. Do not auto-contain only because Layer 1 alerted. |
 | `>6.0` | Execute all available non-disruptive SOC actions: preserve logs/evidence, raise monitoring, add scoped watchlists or temporary detections, create hunt tasks, open/update SOC ticket, and notify SOC. |
-| `>6.0` **AND** all auto-containment gate conditions met: (1) `threat_confirmed=true`, (2) `l2_independent_verification.performed=true`, (3) `verification_state="confirmed"`, (4) `verification_strength` is `supported` or `strong`, (5) `opa_result="allow"`, (6) SOC Autopilot ON, (7) current time inside execution window (default 08:00-20:00 Asia/Ho_Chi_Minh), (8) action is low/medium impact + scoped + time-bound + reversible + non-manual-only, (9) rollback support exists, (10) confirmed behavior is high-fidelity and dangerous now, (11) action is narrowly targeted to verified entity | Execute eligible containment: scoped IP block, WAF virtual patch, force logout, host quarantine, limited network control, or access revocation. |
+| `>6.0` **AND** all `automation_control.auto_containment_gates` fields are true | Execute eligible containment: scoped IP block, WAF virtual patch, force logout, host quarantine, limited network control, or access revocation. |
 | Any score with manual-only target or high business-impact action | Queue for approval or manual escalation. Never automatically isolate SWIFT, Core Banking, HSM, ATM switch, critical VLAN, DR, broad services, external notifications, destructive cleanup, or data deletion. |
+
+Populate `automation_control.auto_containment_gates` with these boolean fields and their source conditions:
+
+| Gate Field | Required Source Condition |
+|------------|---------------------------|
+| `threat_confirmed` | `verified_case.threat_confirmed=true` |
+| `l2_verification_performed` | `l2_independent_verification.performed=true` |
+| `verification_confirmed` | `l2_independent_verification.verification_state="confirmed"` |
+| `verification_supported_or_strong` | `l2_independent_verification.verification_strength` is `supported` or `strong` |
+| `risk_above_floor` | `scoring.final_risk_score_0_10 > 6.0` |
+| `opa_allow` | `policy_guardrails.opa_result="allow"` |
+| `soc_autopilot_on` | `automation_control.soc_autopilot_enabled=true` |
+| `execution_window_open` | current time is inside the configured execution window, default `08:00-20:00 Asia/Ho_Chi_Minh` |
+| `action_scoped_timebound_reversible` | selected action is low/medium impact, scoped, time-bound, reversible, and not manual-only |
+| `rollback_available` | rollback support exists for the selected action |
+| `dangerous_now_behavior` | confirmed behavior is active compromise, exfiltration, fraud/payment manipulation, malware/ransomware, privileged misuse, security-control disablement, destructive behavior, or critical banking path abuse |
+| `verified_target_entity` | the action targets only the verified entity, not a broad service or business process |
+
+Verification cap handling: `sources_unavailable`, `query_timeout`, `stale_context`, `not_found`, `insufficient`, `not_confirmed`, and `not_required` cap final risk at `5.5`; `contradicted` caps final risk at `2.0`. Only `confirmed` with `supported` or `strong` verification can exceed `5.5`.
 
 Layer 1 vote count, worker count, or worker confidence must not be used as an action gate. A single Layer 1 positive finding can lead to action when Layer 2 independently verifies the case and the gate above passes.
 
@@ -810,11 +830,11 @@ These are assessment triggers, not automatic external notifications.
 
 ## 11. Quality Gates For Orchestrator Output
 
-Before final L3 output, verify:
+Before final Layer 2 output, verify:
 
 1. Every activated playbook has a verified technique, verified tactic, banking flag, or anomaly rationale.
 2. Every technique ID in rationale exists in the offline KB.
-3. Every action has approval mode and status.
+3. Every action has `priority`, `timestamp`, `target`, `approval_mode`, `status`, and `playbook_source`.
 4. Every queued action has approver and reason.
 5. High/critical action is not marked `AUTO` unless a local emergency runbook explicitly allows it.
 6. Parent/subtechnique expansion was applied.
@@ -823,4 +843,8 @@ Before final L3 output, verify:
 9. Evidence preservation is listed before disruptive containment.
 10. Regulatory assessment is separated from external notification.
 11. If `final_risk_score_0_10 > 6.0`, output includes `decision.risk_response_floor.triggered=true` and every available non-disruptive floor action is present with `status="executed"` or a documented blocked/unavailable reason.
-12. If an environment-changing action has `status="executed"`, OPA allow, SOC Autopilot ON, execution window, rollback support, scoped target, approval mode, and non-manual action class are all documented.
+12. If an environment-changing action has `status="executed"`, the full auto-containment gate is documented under `automation_control.auto_containment_gates` and every gate field is `true`: `threat_confirmed`, `l2_verification_performed`, `verification_confirmed`, `verification_supported_or_strong`, `risk_above_floor`, `opa_allow`, `soc_autopilot_on`, `execution_window_open`, `action_scoped_timebound_reversible`, `rollback_available`, `dangerous_now_behavior`, and `verified_target_entity`.
+13. If `correlation.same_attack_assessment=true`, `correlation.correlation_keys.entities` contains at least one concrete entity link such as user, account, host, IP, session, request, transaction, or object ID; worker count, same broad domain, or time-only overlap is not sufficient.
+14. If Layer 1 findings overlap only by time window, every non-primary finding is listed in `correlation.unrelated_findings[]` with `recommended_handling`; it is not hidden only in narrative quality notes.
+15. If correlation is uncertain, `scoring.score_rationale` records both the independent-incident interpretation and the hypothetical chain interpretation before response-mode selection.
+16. Every verification source records `query_status`; source unavailability, timeout, stale context, or no matching evidence is reflected in `verification_state` and risk-cap rationale.

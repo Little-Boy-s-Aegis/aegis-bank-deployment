@@ -79,6 +79,7 @@ vectorDbInit:
   imagePullPolicy: Never
   qwenBaseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
   l1HostPath: "/run/desktop/mnt/host/d/hackathon/agent-layer-1"
+  l2HostPath: "/run/desktop/mnt/host/d/hackathon/agent-layer-2"
 
 sharedLogs:
   accessMode: ReadWriteOnce
