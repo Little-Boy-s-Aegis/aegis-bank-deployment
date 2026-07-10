@@ -308,7 +308,7 @@ spec:
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
-              value: "10"
+              value: "60"
             - name: SOC_AUTOPILOT_ENABLED
               value: "false"
             - name: FORTINET_BASE_URL
@@ -422,7 +422,7 @@ spec:
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
-              value: "10"
+              value: "60"
             - name: SOC_AUTOPILOT_ENABLED
               value: "false"
             - name: FORTINET_BASE_URL
@@ -686,7 +686,7 @@ spec:
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
-              value: "30"
+              value: "60"
             - name: QDRANT_URL
               value: "http://qdrant:6333"
           volumeMounts:

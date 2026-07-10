@@ -62,7 +62,8 @@ threat_rules = {
     "SYSTEM_DEACTIVATION": re.compile(r"(?i)\b(threat_detected\s*:\s*false|confidence_score\s*:\s*0)\b"),
     "MARKDOWN_CODE_BLOCK": re.compile(r"`{3,}\s*[a-zA-Z0-9_-]*", re.DOTALL),
     "JSON_ESCAPING": re.compile(r'(?<!\\)["\']'),
-    "JNDI_LOG4J_LOOKUP": re.compile(r"(?i)\$\{jndi:[a-zA-Z0-9]+://.*?\}|\$\{[a-zA-Z:]+\}")
+    "JNDI_LOG4J_LOOKUP": re.compile(r"(?i)\$\{jndi:[a-zA-Z0-9]+://.*?\}|\$\{[a-zA-Z:]+\}"),
+    "SECURITY_EVENT": re.compile(r"(?i)SecurityEventPublisher|Published security event|type=(SQL_INJECTION|XSS|IDOR|BRUTE_FORCE|PARAM_TAMPER)")
 }
 
 # Deduplication cache
@@ -240,6 +241,9 @@ def parse_and_normalize(raw_record, facility):
     elif facility == "app":
         raw_payload = raw_record.get("log", "")
         client_ip = "127.0.0.1"
+        ip_match = re.search(r"clientIp=([a-fA-F0-9.:]+)", raw_payload)
+        if ip_match:
+            client_ip = ip_match.group(1)
         agent_name = "Web-Prod-01"
         agent_id = "agent-01"
 
