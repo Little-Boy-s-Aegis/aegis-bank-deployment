@@ -220,4 +220,27 @@ We also verified all 53 previously failed test cases using a custom Python scrip
 
 All changes have been successfully committed and pushed to git on remote branch `feature/fluent-bit-setup`.
 
+---
+
+## 8. Real-time IP Banning System & Enforcer
+
+We implemented a multi-layered, real-time IP Banning mechanism enforcing bans at the gateway, application, and kernel firewall levels:
+
+### A. Gateway-Level Enforcement (Nginx auth_request)
+- Configured [default.conf](file:///d:/hackathon/aegis-bank-deployment/nginx/default.conf) (and both Helm/Kubernetes configurations) to intercept all traffic using Nginx's `auth_request` directive:
+  ```nginx
+  auth_request /_aegis_ip_ban_check;
+  ```
+- Subrequests are routed to the `/api/internal/ip-ban/check` endpoint on the Go dashboard backend. Banned IPs are blocked instantly at the Nginx edge returning a clean `403 Forbidden` JSON response, shielding downstream apps and console endpoints (like Kafdrop).
+
+### B. Application-Level Enforcement (Spring Boot & Go SOC)
+- **Go SOC Backend:** Utilizes an `IPBanMiddleware` wrapper across protected API routes checking IP status against active bans in Postgres.
+- **Java Banking Backend (`be-backend`):** Integrated a custom [IpBlockFilter.java](file:///d:/hackathon/BE/src/main/java/com/example/bank/config/IpBlockFilter.java) at the start of the filter chain (`http.addFilterBefore(ipBlockFilter, UsernamePasswordAuthenticationFilter.class)`).
+- Synchronizes bans instantly via a REST synchronization endpoint `/api/admin/security/banned-ips` using the internal `X-Aegis-Token`.
+
+### C. Kernel-Level Enforcement (Firewall Enforcer)
+- Created the `ip-ban-enforcer` service (available in [docker-compose.network-enforcement.yml](file:///d:/hackathon/aegis-bank-deployment/docker-compose.network-enforcement.yml)).
+- It runs an asynchronous daemon script checking `/api/banned-ips` every 3 seconds to format and update an `ipset` kernel denylist. Traffic from banned IPs is dropped directly at the packet level (`iptables` INPUT/FORWARD/DOCKER-USER chains), preventing banned IPs from even pinging or establishing connections.
+
+
 

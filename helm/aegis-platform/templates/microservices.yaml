@@ -154,6 +154,11 @@ spec:
           image: {{ .Values.dashboardBackend.image }}
           imagePullPolicy: {{ .Values.dashboardBackend.imagePullPolicy }}
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
             {{- if eq .Values.environment "aws" }}
             - name: DATABASE_URL
               value: "postgres://postgres:$(POSTGRES_PASSWORD)@{{ .Values.aws.rdsEndpoint }}:5432/{{ .Values.aws.postgresDb }}?sslmode=require"
@@ -165,11 +170,6 @@ spec:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
             {{- end }}
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: aegis-secrets
-                  key: postgres-password
             - name: AEGIS_INTERNAL_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -244,6 +244,11 @@ spec:
           image: {{ .Values.soarEngine.image }}
           imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
             {{- if eq .Values.environment "aws" }}
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.aws.mskBrokers | quote }}
@@ -259,11 +264,6 @@ spec:
             - name: REDIS_URL
               value: "redis://redis:6379/0"
             {{- end }}
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: aegis-secrets
-                  key: postgres-password
             - name: DASHBOARD_API_URL
               value: "http://dashboard-backend:8082/api"
             - name: AEGIS_INTERNAL_TOKEN
@@ -337,6 +337,11 @@ spec:
           image: {{ .Values.soarEngine.image }}
           imagePullPolicy: {{ .Values.soarEngine.imagePullPolicy }}
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: postgres-password
             {{- if eq .Values.environment "aws" }}
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.aws.mskBrokers | quote }}
@@ -352,11 +357,6 @@ spec:
             - name: REDIS_URL
               value: "redis://redis:6379/0"
             {{- end }}
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: aegis-secrets
-                  key: postgres-password
             - name: DASHBOARD_API_URL
               value: "http://dashboard-backend:8082/api"
             - name: AEGIS_INTERNAL_TOKEN

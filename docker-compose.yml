@@ -54,7 +54,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -245,7 +245,7 @@ services:
       kafka-3:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/api/admin/security/status || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 10

@@ -157,13 +157,13 @@ spec:
           image: aegis-bank-deployment-dashboard-backend:latest
           imagePullPolicy: Never
           env:
-            - name: DATABASE_URL
-              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: aegis-secrets
                   key: postgres-password
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
             - name: AEGIS_INTERNAL_TOKEN
@@ -252,13 +252,13 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
-            - name: DATABASE_URL
-              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: aegis-secrets
                   key: postgres-password
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: REDIS_URL
               value: "redis://redis:6379/0"
             - name: DASHBOARD_API_URL
@@ -280,7 +280,7 @@ spec:
             - name: LLM_TIMEOUT_SECONDS
               value: "10"
             - name: SOC_AUTOPILOT_ENABLED
-              value: "true"
+              value: "false"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: AGENT_L2_DIR
@@ -336,13 +336,13 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
-            - name: DATABASE_URL
-              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: aegis-secrets
                   key: postgres-password
+            - name: DATABASE_URL
+              value: "postgres://postgres:$(POSTGRES_PASSWORD)@postgres:5432/aegis?sslmode=disable"
             - name: REDIS_URL
               value: "redis://redis:6379/0"
             - name: DASHBOARD_API_URL
@@ -364,7 +364,7 @@ spec:
             - name: LLM_TIMEOUT_SECONDS
               value: "10"
             - name: SOC_AUTOPILOT_ENABLED
-              value: "true"
+              value: "false"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: AGENT_L2_DIR
