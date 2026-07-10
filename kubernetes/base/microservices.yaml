@@ -275,6 +275,36 @@ spec:
                   key: dashscope-api-key
             - name: QWEN_MODEL_NAME
               value: "qwen3-plus"
+            - name: LLM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: llm-provider
+                  optional: true
+            - name: BEDROCK_MODEL_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-model-id
+                  optional: true
+            - name: BEDROCK_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-region
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-access-key-id
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-secret-access-key
+                  optional: true
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
@@ -359,6 +389,36 @@ spec:
                   key: dashscope-api-key
             - name: QWEN_MODEL_NAME
               value: "qwen3-plus"
+            - name: LLM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: llm-provider
+                  optional: true
+            - name: BEDROCK_MODEL_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-model-id
+                  optional: true
+            - name: BEDROCK_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-region
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-access-key-id
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-secret-access-key
+                  optional: true
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS
@@ -593,6 +653,36 @@ spec:
                   key: dashscope-api-key
             - name: QWEN_MODEL_NAME
               value: "qwen3-plus"
+            - name: LLM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: llm-provider
+                  optional: true
+            - name: BEDROCK_MODEL_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-model-id
+                  optional: true
+            - name: BEDROCK_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: bedrock-region
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-access-key-id
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aegis-secrets
+                  key: aws-secret-access-key
+                  optional: true
             - name: LLM_ENABLED
               value: "true"
             - name: LLM_TIMEOUT_SECONDS

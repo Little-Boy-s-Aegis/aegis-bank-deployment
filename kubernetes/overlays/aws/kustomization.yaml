@@ -23,6 +23,11 @@ secretGenerator:
       - jwt-secret=ENTER_YOUR_SECURE_PRODUCTION_JWT_SECRET_HERE
       - aegis-security-sync-token=ENTER_YOUR_SECURE_PRODUCTION_SYNC_TOKEN_HERE
       - dashscope-api-key=ENTER_YOUR_REAL_DASHSCOPE_API_KEY_HERE
+      - llm-provider=bedrock
+      - bedrock-model-id=qwen.qwen3-coder-next
+      - bedrock-region=ap-southeast-2
+      - aws-access-key-id=IRSA_OR_AWS_ACCESS_KEY_ID
+      - aws-secret-access-key=IRSA_OR_AWS_SECRET_ACCESS_KEY
 
 generatorOptions:
   disableNameSuffixHash: true
