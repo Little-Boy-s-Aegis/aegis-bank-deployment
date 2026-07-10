@@ -44,6 +44,9 @@ QWEN_BASE_URL = os.getenv(
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() == "true"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "dashscope").strip().lower()
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-coder-next")
+BEDROCK_REGION = os.getenv("BEDROCK_REGION", os.getenv("AWS_REGION", "us-east-1"))
 
 def _sync_s3_prefix(bucket: str, prefix: str, destination: str) -> None:
     if not bucket or not prefix:
@@ -656,7 +659,11 @@ class QwenSecurityAgent:
     """
 
     def __init__(self):
-        self.enabled = LLM_ENABLED and bool(DASHSCOPE_API_KEY)
+        self.provider = LLM_PROVIDER
+        if self.provider == "bedrock":
+            self.enabled = LLM_ENABLED
+        else:
+            self.enabled = LLM_ENABLED and bool(DASHSCOPE_API_KEY)
         self.client = None
         self._lock = threading.Lock()
 
@@ -691,26 +698,42 @@ class QwenSecurityAgent:
 
         if self.enabled:
             try:
-                from openai import OpenAI
-                self.client = OpenAI(
-                    api_key=DASHSCOPE_API_KEY,
-                    base_url=QWEN_BASE_URL,
-                    timeout=LLM_TIMEOUT,
-                )
-                print(
-                    f"[LLM] Qwen Security Agent initialized. "
-                    f"Model={QWEN_MODEL} BaseURL={QWEN_BASE_URL} "
-                    f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
-                    f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
-                )
+                if self.provider == "bedrock":
+                    import boto3
+                    import botocore.config
+                    config = botocore.config.Config(read_timeout=LLM_TIMEOUT, retries={"max_attempts": 3})
+                    self.client = boto3.client(
+                        "bedrock-runtime",
+                        region_name=BEDROCK_REGION,
+                        config=config,
+                    )
+                    print(
+                        f"[LLM] Qwen Security Agent initialized (Bedrock). "
+                        f"Model={BEDROCK_MODEL_ID} Region={BEDROCK_REGION} "
+                        f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
+                        f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
+                    )
+                else:
+                    from openai import OpenAI
+                    self.client = OpenAI(
+                        api_key=DASHSCOPE_API_KEY,
+                        base_url=QWEN_BASE_URL,
+                        timeout=LLM_TIMEOUT,
+                    )
+                    print(
+                        f"[LLM] Qwen Security Agent initialized (DashScope). "
+                        f"Model={QWEN_MODEL} BaseURL={QWEN_BASE_URL} "
+                        f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
+                        f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
+                    )
             except ImportError:
-                print("[LLM] WARNING: openai package not installed. LLM agent disabled.")
+                print(f"[LLM] WARNING: Required package for {self.provider} not installed. LLM agent disabled.")
                 self.enabled = False
             except Exception as e:
-                print(f"[LLM] WARNING: Failed to initialize OpenAI client: {e}")
+                print(f"[LLM] WARNING: Failed to initialize {self.provider} client: {e}")
                 self.enabled = False
         else:
-            if not DASHSCOPE_API_KEY:
+            if self.provider != "bedrock" and not DASHSCOPE_API_KEY:
                 print("[LLM] WARNING: DASHSCOPE_API_KEY not set. LLM agent disabled, using classifier-only mode.")
             else:
                 print("[LLM] LLM agent disabled via LLM_ENABLED=false.")
@@ -841,6 +864,32 @@ class QwenSecurityAgent:
     # --------------------------------------------------
     # Main Analysis Method
     # --------------------------------------------------
+    def _extract_bedrock_text(self, data: dict) -> str:
+        candidates = [
+            data.get("output_text"),
+            data.get("text"),
+            data.get("response"),
+        ]
+
+        output_message = data.get("output", {}).get("message", {})
+        for item in output_message.get("content", []) if isinstance(output_message, dict) else []:
+            if isinstance(item, dict):
+                candidates.append(item.get("text"))
+
+        for item in data.get("content", []) if isinstance(data.get("content"), list) else []:
+            if isinstance(item, dict):
+                candidates.append(item.get("text"))
+
+        choices = data.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+            candidates.append(message.get("content") or choices[0].get("text"))
+
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        raise ValueError(f"Could not extract text from Bedrock response keys: {list(data.keys())}")
+
     def analyze(self, log_record):
         """
         Analyze a log record using the appropriate Qwen agent.
@@ -897,25 +946,44 @@ class QwenSecurityAgent:
             self._enforce_rate_limit()
 
             try:
-                response = self.client.chat.completions.create(
-                    model=QWEN_MODEL,
-                    messages=[
-                        {"role": "system", "content": agent_config["system_prompt"]},
-                        {"role": "user", "content": telemetry_msg},
-                    ],
-                    temperature=0.1,
-                    max_tokens=1500,
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
-                )
+                if self.provider == "bedrock":
+                    payload = {
+                        "messages": [
+                            {"role": "system", "content": agent_config["system_prompt"]},
+                            {"role": "user", "content": f"{telemetry_msg}\n\nReturn only a valid JSON object."},
+                        ],
+                        "max_tokens": 1500,
+                        "temperature": 0.1,
+                    }
+                    response = self.client.invoke_model(
+                        modelId=BEDROCK_MODEL_ID,
+                        body=json.dumps(payload),
+                        contentType="application/json",
+                        accept="application/json",
+                    )
+                    resp_data = json.loads(response["body"].read())
+                    raw_output = self._extract_bedrock_text(resp_data)
+                else:
+                    response = self.client.chat.completions.create(
+                        model=QWEN_MODEL,
+                        messages=[
+                            {"role": "system", "content": agent_config["system_prompt"]},
+                            {"role": "user", "content": telemetry_msg},
+                        ],
+                        temperature=0.1,
+                        max_tokens=1500,
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": False},
+                    )
 
-                # Validate response structure
-                if not response.choices:
-                    raise ValueError("Empty response: no choices returned by API")
+                    # Validate response structure
+                    if not response.choices:
+                        raise ValueError("Empty response: no choices returned by API")
 
-                raw_output = response.choices[0].message.content
+                    raw_output = response.choices[0].message.content
+
                 if not raw_output:
-                    raise ValueError("Empty content in API response choice")
+                    raise ValueError("Empty content in API response")
 
                 raw_output = raw_output.strip()
                 finding = self._parse_llm_output(raw_output, agent_config)

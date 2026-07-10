@@ -1,0 +1,22 @@
+services:
+  # Linux-host override for packet-level IP bans.
+  # It intentionally uses host networking and elevated network capabilities so
+  # ipset/iptables rules can block ICMP ping and container traffic at kernel level.
+  ip-ban-enforcer:
+    build:
+      context: .
+      dockerfile: firewall-enforcer/Dockerfile
+    container_name: aegis-ip-ban-enforcer
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      DASHBOARD_BANNED_IPS_URL: http://127.0.0.1:${NGINX_PORT:-80}/api/banned-ips
+      AEGIS_INTERNAL_TOKEN: ${AEGIS_SECURITY_SYNC_TOKEN}
+      IP_BAN_ENFORCER_INTERVAL_SECONDS: ${IP_BAN_ENFORCER_INTERVAL_SECONDS:-3}
+    depends_on:
+      nginx:
+        condition: service_started
+    restart: unless-stopped

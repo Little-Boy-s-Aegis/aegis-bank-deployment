@@ -52,7 +52,7 @@ dashboardFrontend:
 soarEngine:
   image: aegis-soar-engine:latest
   imagePullPolicy: Never
-  autopilotEnabled: "true"
+  autopilotEnabled: "false"
   dryRunMode: "false"
 
 stagingSandbox:
