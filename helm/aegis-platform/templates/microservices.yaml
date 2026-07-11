@@ -298,6 +298,12 @@ spec:
               value: "true"
             - name: OPA_URL
               value: "http://opa:8181"
+            - name: OPA_CALLER_ID
+              value: "soar-orchestrator"
+            - name: OPA_POLICY_REVISION
+              value: "aegis-autopilot-v1"
+            - name: OPA_ALLOW_CACHE_TTL_SECONDS
+              value: "30"
             - name: HA_NODE_ROLE
               value: "active"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -391,6 +397,12 @@ spec:
               value: "true"
             - name: OPA_URL
               value: "http://opa:8181"
+            - name: OPA_CALLER_ID
+              value: "soar-orchestrator"
+            - name: OPA_POLICY_REVISION
+              value: "aegis-autopilot-v1"
+            - name: OPA_ALLOW_CACHE_TTL_SECONDS
+              value: "30"
             - name: HA_NODE_ROLE
               value: "standby"
             - name: HA_HEALTH_CHECK_INTERVAL_MS
@@ -470,6 +482,12 @@ spec:
               value: "true"
             - name: OPA_URL
               value: "http://opa:8181"
+            - name: OPA_CALLER_ID
+              value: "soar-action-worker"
+            - name: OPA_POLICY_REVISION
+              value: "aegis-autopilot-v1"
+            - name: OPA_ALLOW_CACHE_TTL_SECONDS
+              value: "30"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED
@@ -536,6 +554,12 @@ spec:
               value: "true"
             - name: OPA_URL
               value: "http://opa:8181"
+            - name: OPA_CALLER_ID
+              value: "soar-action-worker"
+            - name: OPA_POLICY_REVISION
+              value: "aegis-autopilot-v1"
+            - name: OPA_ALLOW_CACHE_TTL_SECONDS
+              value: "30"
             - name: FORTINET_BASE_URL
               value: "http://staging-sandbox:8095/api/v2"
             - name: PREKILL_ENABLED

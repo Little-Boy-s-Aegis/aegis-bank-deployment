@@ -462,6 +462,9 @@ services:
       # OPA Configuration
       OPA_ENABLED: "true"
       OPA_URL: "http://opa:8181"
+      OPA_CALLER_ID: "soar-orchestrator"
+      OPA_POLICY_REVISION: "aegis-autopilot-v1"
+      OPA_ALLOW_CACHE_TTL_SECONDS: "30"
       # Asset Inventory Configuration
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
       # HA Configuration
@@ -549,6 +552,9 @@ services:
       # OPA Configuration
       OPA_ENABLED: "true"
       OPA_URL: "http://opa:8181"
+      OPA_CALLER_ID: "soar-action-worker"
+      OPA_POLICY_REVISION: "aegis-autopilot-v1"
+      OPA_ALLOW_CACHE_TTL_SECONDS: "30"
       # Asset Inventory Configuration
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
       FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
@@ -605,6 +611,9 @@ services:
       VAULT_SECRET_PATH: "secret/data/aegis/soar"
       OPA_ENABLED: "true"
       OPA_URL: "http://opa:8181"
+      OPA_CALLER_ID: "soar-orchestrator"
+      OPA_POLICY_REVISION: "aegis-autopilot-v1"
+      OPA_ALLOW_CACHE_TTL_SECONDS: "30"
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
       # HA Configuration — STANDBY role
       HA_NODE_ROLE: "standby"
@@ -666,6 +675,9 @@ services:
       VAULT_SECRET_PATH: "secret/data/aegis/soar"
       OPA_ENABLED: "true"
       OPA_URL: "http://opa:8181"
+      OPA_CALLER_ID: "soar-action-worker"
+      OPA_POLICY_REVISION: "aegis-autopilot-v1"
+      OPA_ALLOW_CACHE_TTL_SECONDS: "30"
       ASSET_INVENTORY_API_URL: "http://asset-inventory:8083/api/v1/assets/critical"
       FORTINET_BASE_URL: "http://aegis-staging-sandbox:8095/api/v2"
       PREKILL_ENABLED: "true"

@@ -1,0 +1,22 @@
+{
+  "aegis_config": {
+    "autopilot": {
+      "policy_revision": "aegis-autopilot-v1",
+      "orchestrator_id": "layer2_orchestrator_soar",
+      "caller_ids": ["soar-action-worker", "soar-orchestrator"],
+      "min_risk_score": 8.5,
+      "max_actions_per_window": 5,
+      "max_duration_seconds": 3600,
+      "allowed_action_types": [
+        "block_ip", "block_domain", "quarantine_host", "disable_account",
+        "reset_password", "lift_isolation", "deploy_waf_rule",
+        "deploy_waf_virtual_patch", "preserve_logs", "open_ticket", "notify_soc"
+      ],
+      "protected_targets": [
+        "10.0.0.1", "10.0.0.2", "192.168.1.1", "192.168.1.254",
+        "DB-PROD-01", "DC-PROD-AD", "CORE-BANK-GW"
+      ],
+      "protected_ip_ranges": ["10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    }
+  }
+}
