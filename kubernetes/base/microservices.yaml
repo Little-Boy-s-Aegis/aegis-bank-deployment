@@ -758,6 +758,7 @@ metadata:
   name: nginx-gateway
 spec:
   type: NodePort
+  externalTrafficPolicy: Local
   selector:
     app: nginx-gateway
   ports:

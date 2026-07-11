@@ -207,9 +207,9 @@ class StaticRules:
 
         # ----- SOAR Fast Path (obvious attacks, bypass AI) -----
 
-        # Rule 4: Scan for unambiguous attack signatures
+        # Rule 4: Scan for unambiguous attack signatures (external IPs only)
         is_attack, attack_type = _check_soar_attacks(payload)
-        if is_attack:
+        if is_attack and not is_internal:
             self.stats["soar_fast_path"] += 1
             return ACTION_SOAR_FAST_PATH, {
                 "attack_type": attack_type,
