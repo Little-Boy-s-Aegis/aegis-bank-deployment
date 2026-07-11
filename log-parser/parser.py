@@ -62,7 +62,8 @@ threat_rules = {
     "SYSTEM_DEACTIVATION": re.compile(r"(?i)\b(threat_detected\s*:\s*false|confidence_score\s*:\s*0)\b"),
     "MARKDOWN_CODE_BLOCK": re.compile(r"`{3,}\s*[a-zA-Z0-9_-]*", re.DOTALL),
     "JSON_ESCAPING": re.compile(r'(?<!\\)["\']'),
-    "JNDI_LOG4J_LOOKUP": re.compile(r"(?i)\$\{jndi:[a-zA-Z0-9]+://.*?\}|\$\{[a-zA-Z:]+\}")
+    "JNDI_LOG4J_LOOKUP": re.compile(r"(?i)\$\{jndi:[a-zA-Z0-9]+://.*?\}|\$\{[a-zA-Z:]+\}"),
+    "SECURITY_EVENT": re.compile(r"(?i)SecurityEventPublisher|Published security event|type=(SQL_INJECTION|XSS|IDOR|BRUTE_FORCE|PARAM_TAMPER)")
 }
 
 # Deduplication cache
@@ -230,7 +231,14 @@ def parse_and_normalize(raw_record, facility):
     
     if facility in ("apigw", "waf"):
         raw_payload = raw_record.get("path", "")
-        client_ip = raw_record.get("remote", "127.0.0.1")
+        # Extract real client IP from X-Forwarded-For if available
+        xff = raw_record.get("http_x_forwarded_for") or raw_record.get("x_forwarded_for") or raw_record.get("X-Forwarded-For")
+        if xff and xff.strip() and xff.strip() != "-" and xff.strip().lower() != "unknown":
+            parts = [p.strip() for p in xff.split(",")]
+            if parts and parts[0]:
+                client_ip = parts[0]
+        else:
+            client_ip = raw_record.get("remote", "127.0.0.1")
         agent_name = "NginxGateway"
         agent_id = "agent-gateway"
         try:
@@ -240,6 +248,9 @@ def parse_and_normalize(raw_record, facility):
     elif facility == "app":
         raw_payload = raw_record.get("log", "")
         client_ip = "127.0.0.1"
+        ip_match = re.search(r"clientIp=([a-fA-F0-9.:]+)", raw_payload)
+        if ip_match:
+            client_ip = ip_match.group(1)
         agent_name = "Web-Prod-01"
         agent_id = "agent-01"
 
@@ -339,213 +350,387 @@ def main():
     print("==================================================")
     print("      AEGIS PYTHON LOG PARSER PIPELINE            ")
     print("==================================================")
-    print(f"Connecting to Kafka Brokers: {KAFKA_BROKERS}")
     
-    # Init Consumer
-    consumer = None
-    retries = 10
-    while retries > 0:
-        try:
-            consumer = KafkaConsumer(
-                *L0_TOPICS,
-                bootstrap_servers=KAFKA_BROKERS,
-                group_id="aegis-python-log-parser-group",
-                auto_offset_reset="latest",
-                value_deserializer=lambda v: json.loads(v.decode('utf-8'))
-            )
-            break
-        except Exception as e:
-            print(f"Kafka consumer connection failed ({e}). Retrying in 3 seconds...")
-            time.sleep(3)
-            retries -= 1
-            
-    if not consumer:
-        print("Failed to start Kafka consumer. Exiting.")
-        sys.exit(1)
-
-    # Init Producer
-    producer = None
-    retries = 10
-    while retries > 0:
-        try:
-            producer = KafkaProducer(
-                bootstrap_servers=KAFKA_BROKERS,
-                value_serializer=lambda v: json.dumps(v).encode('utf-8')
-            )
-            break
-        except Exception as e:
-            print(f"Kafka producer connection failed ({e}). Retrying in 3 seconds...")
-            time.sleep(3)
-            retries -= 1
-            
-    if not producer:
-        print("Failed to start Kafka producer. Exiting.")
-        sys.exit(1)
-
-    # Initialize S3 Client & Archiver
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_bucket = os.getenv("AWS_S3_BUCKET_NAME", "aegis-raw-logs-compliance")
-    aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-    local_raw_log_dir = os.getenv("LOCAL_RAW_LOG_DIR", "./raw-logs")
-
-    s3_client = None
-    if aws_access_key and aws_secret_key:
-        try:
-            import boto3
-            s3_client = boto3.client(
-                's3',
-                aws_access_key_id=aws_access_key,
-                aws_secret_access_key=aws_secret_key,
-                region_name=aws_region
-            )
-            print(f"[AWS S3] Initialized S3 Client for bucket '{aws_bucket}'.")
-        except Exception as e:
-            print(f"[AWS S3 WARNING] Failed to initialize client: {e}. Falling back to local storage.")
-    else:
-        print("[AWS S3 WARNING] AWS Credentials not set. Raw logs will be saved to local disk for audit.")
-
-    archiver = S3Archiver(s3_client, aws_bucket, local_raw_log_dir)
-
-    # Initialize Lightweight Classifier
-    classifier = LightweightClassifier()
-    stats_interval = 60
-    last_stats_time = time.time()
-    print("[CLASSIFIER] Lightweight anomaly classifier initialized.")
-
-    # Initialize Qwen LLM Security Agent
-    llm_agent = QwenSecurityAgent()
-
-    print("Successfully connected to Kafka brokers! Processing logs...")
-
-    try:
-        for message in consumer:
-            topic = message.topic
-            facility = get_facility(topic)
-            raw_record = message.value
-            
-            # 1. Archive raw log for Compliance/Audit
-            archiver.archive(facility, raw_record)
-            
-            # 2. Parse, normalize, and verify log entries
+    ingestion_queue_url = os.getenv("INGESTION_QUEUE_URL")
+    action_queue_url = os.getenv("ACTION_QUEUE_URL")
+    aws_region = os.getenv("AWS_REGION", "ap-southeast-1")
+    
+    if ingestion_queue_url:
+        print("[SQS MODE] Ingestion Queue URL:", ingestion_queue_url)
+        print("[SQS MODE] Action Queue URL:", action_queue_url)
+        
+        import boto3
+        sqs_client = boto3.client("sqs", region_name=aws_region)
+        s3_client = boto3.client("s3", region_name=aws_region)
+        
+        # Initialize Classifier
+        classifier = LightweightClassifier()
+        print("[CLASSIFIER] Lightweight anomaly classifier initialized.")
+        
+        # Initialize Qwen LLM Security Agent
+        llm_agent = QwenSecurityAgent()
+        print("[LLM AGENT] Qwen LLM Security Agent initialized.")
+        
+        print("SQS consumer loop started. Polling messages...")
+        
+        while True:
             try:
-                clean_record = parse_and_normalize(raw_record, facility)
-                if clean_record:
-                    # 3. 3-Stage Classifier Pipeline
-                    result = classifier.classify(clean_record)
-                    routing = result.get("routing_action", "DROP")
-
-                    # ---- Route A: DROP (noise, invalid, benign) ----
-                    if routing == "DROP":
-                        pass  # Silently dropped (already archived)
-
-                    # ---- Route B: SOAR Fast-Path (obvious attacks bypass AI) ----
-                    elif routing == "SOAR_FAST_PATH":
-                        soar_meta = result.get("soar_metadata", {})
-                        soar_event = {
-                            "event_type": "SOAR_FAST_PATH",
-                            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            "attack_type": soar_meta.get("attack_type", "UNKNOWN"),
-                            "source_ip": soar_meta.get("source_ip", ""),
-                            "is_internal": soar_meta.get("is_internal", False),
-                            "recommended_action": soar_meta.get("recommended_action", "BLOCK_IP"),
-                            "payload_snippet": soar_meta.get("payload_snippet", "")[:200],
-                            "facility": facility,
-                            "signals": result["signals"],
-                            "anomaly_score": result["anomaly_score"],
-                            "classifier_stage": "stage2_static",
-                        }
-                        producer.send(SOAR_FAST_PATH_TOPIC, soar_event)
-                        producer.flush()
-                        print(
-                            f"[SOAR-FAST] {soar_meta.get('attack_type','?')} "
-                            f"from {soar_meta.get('source_ip','?')} "
-                            f"→ {soar_meta.get('recommended_action','?')} "
-                            f"payload={soar_meta.get('payload_snippet','')[:80]}"
-                        )
-
-                    # ---- Route C: LLM Queue (suspicious → deep AI analysis) ----
-                    elif routing == "LLM_QUEUE":
-                        # Enrich clean record with classifier metadata
-                        clean_record["anomalyScore"] = result["anomaly_score"]
-                        clean_record["classification"] = result["classification"]
-                        clean_record["classifierSignals"] = result["signals"]
-                        if "threshold_rules" in result:
-                            clean_record["thresholdRules"] = result["threshold_rules"]
-
-                        # Write to L2 Verification clean topic
-                        producer.send(L2_TOPIC, clean_record)
-                        producer.flush()
-                        print(
-                            f"[{facility.upper()}] FORWARDED [{result['classification'].upper()}] "
-                            f"score={result['anomaly_score']:.2f} "
-                            f"signals={result['signals']} "
-                            f"msg={clean_record['message'][:80]}"
-                        )
-
-                        # 4. LLM Agent Analysis → SOAR-ready JSON envelope
-                        try:
-                            envelope = llm_agent.analyze(clean_record)
-                            if envelope:
-                                producer.send(L1_FINDINGS_TOPIC, envelope)
-                                producer.flush()
-                                env_routing = envelope.get('routing', {})
-                                env_payload = envelope.get('payload', {})
-                                print(
-                                    f"[LLM:{env_routing.get('agent_id','?')}] "
-                                    f"corr={envelope.get('correlation_id','')} "
-                                    f"threat={env_routing.get('threat_detected',False)} "
-                                    f"type={env_routing.get('finding_type','?')} "
-                                    f"MITRE={env_payload.get('mitre_attack_id','')} "
-                                    f"CAPEC={env_payload.get('capec_id','')} "
-                                    f"evidence={env_payload.get('raw_evidence','')[:100]}"
-                                )
-                        except Exception as llm_err:
-                            print(f"[LLM] Analysis error (non-fatal): {llm_err}")
-
-            except Exception as pe:
-                print(f"Failed to parse log record: {pe}")
-
-            # Periodic stats logging
-            now = time.time()
-            if now - last_stats_time > stats_interval:
-                last_stats_time = now
-                c_stats = classifier.get_stats()
-                l_stats = llm_agent.get_stats()
-                print(
-                    f"[PIPELINE STATS] total={c_stats['total_processed']} "
-                    f"s1_invalid={c_stats['stage1_invalid_dropped']} "
-                    f"s2_dropped={c_stats['stage2_static_dropped']} "
-                    f"s2_soar={c_stats['stage2_soar_fast_path']} "
-                    f"s3_threshold={c_stats['stage3_threshold_triggered']} "
-                    f"benign={c_stats['benign_dropped']} "
-                    f"suspicious={c_stats['suspicious_forwarded']} "
-                    f"anomalous={c_stats['anomalous_forwarded']} "
-                    f"threats={c_stats['threat_forwarded']} "
-                    f"drop_rate={c_stats.get('drop_rate', 0)}% "
-                    f"soar_bypass={c_stats.get('soar_bypass_rate', 0)}%"
-                )
-                print(
-                    f"[LLM STATS] calls={l_stats['total_calls']} "
-                    f"ok={l_stats['successful']} fail={l_stats['failed']} "
-                    f"fallback={l_stats['fallbacks']} "
-                    f"A={l_stats['agent_a_calls']} B={l_stats['agent_b_calls']} C={l_stats['agent_c_calls']} "
-                    f"| errors: timeout={l_stats.get('errors_timeout',0)} "
-                    f"rate_limit={l_stats.get('errors_rate_limit',0)} "
-                    f"auth={l_stats.get('errors_auth',0)} "
-                    f"parse={l_stats.get('errors_parse_json',0)} "
-                    f"network={l_stats.get('errors_network',0)} "
-                    f"server={l_stats.get('errors_server',0)} "
-                    f"| circuit_breaker={l_stats.get('circuit_breaker_state','closed')} "
-                    f"trips={l_stats.get('circuit_breaker_trips',0)}"
+                response = sqs_client.receive_message(
+                    QueueUrl=ingestion_queue_url,
+                    MaxNumberOfMessages=10,
+                    WaitTimeSeconds=10
                 )
                 
-    except KeyboardInterrupt:
-        print("Shutting down log parser pipeline.")
-        stats = classifier.get_stats()
-        print(f"[CLASSIFIER FINAL STATS] {stats}")
-    finally:
-        consumer.close()
+                messages = response.get("Messages", [])
+                if not messages:
+                    continue
+                    
+                for message in messages:
+                    receipt_handle = message["ReceiptHandle"]
+                    try:
+                        body = json.loads(message["Body"])
+                        # Check for S3 notifications
+                        for s3_record in body.get("Records", []):
+                            s3_data = s3_record.get("s3", {})
+                            bucket_name = s3_data.get("bucket", {}).get("name")
+                            object_key = urllib.parse.unquote_plus(s3_data.get("object", {}).get("key"))
+                            
+                            if not bucket_name or not object_key:
+                                continue
+                                
+                            print(f"[SQS] Received notification for S3 file: s3://{bucket_name}/{object_key}")
+                            
+                            # Read processed JSON from S3
+                            obj_resp = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+                            raw_data_bytes = obj_resp["Body"].read()
+                            
+                            # Recursively decompress gzip if needed
+                            while raw_data_bytes.startswith(b'\x1f\x8b'):
+                                raw_data_bytes = gzip.decompress(raw_data_bytes)
+                                
+                            raw_text = raw_data_bytes.decode('utf-8', errors='replace')
+                            processed_data = json.loads(raw_text)
+                            
+                            # Extract facility from object key or logGroup
+                            facility = "app"
+                            if "apigw" in object_key:
+                                facility = "apigw"
+                            elif "waf" in object_key:
+                                facility = "waf"
+                                
+                            for record in processed_data.get("records", []):
+                                message_text = record.get("message", "")
+                                if not message_text:
+                                    continue
+                                    
+                                # Since raw_text can contain multiple JSON Lines of CloudWatch logs
+                                # or concatenated JSON objects (due to Firehose delivery concatenation)
+                                for line in message_text.splitlines():
+                                    if not line.strip():
+                                        continue
+                                    
+                                    try:
+                                        cw_logs = []
+                                        s = line.strip()
+                                        decoder = json.JSONDecoder()
+                                        while s:
+                                            try:
+                                                obj, idx = decoder.raw_decode(s)
+                                                cw_logs.append(obj)
+                                                s = s[idx:].strip()
+                                            except json.JSONDecodeError:
+                                                break
+                                                
+                                        for cw_log in cw_logs:
+                                            log_group = cw_log.get("logGroup", "")
+                                            # Adjust facility from log group if present
+                                            if log_group:
+                                                if "be-backend" in log_group:
+                                                    facility = "app"
+                                                elif "backend-api" in log_group or "fe-web" in log_group:
+                                                    facility = "apigw"
+                                            
+                                            for log_event in cw_log.get("logEvents", []):
+                                                msg = log_event.get("message", "")
+                                                if not msg:
+                                                    continue
+                                                    
+                                                # Parse as JSON if the message itself is JSON
+                                                try:
+                                                    raw_record = json.loads(msg)
+                                                except Exception:
+                                                    if facility in ("apigw", "waf"):
+                                                        raw_record = {"path": msg, "remote": "127.0.0.1", "code": 200}
+                                                    else:
+                                                        raw_record = {"log": msg}
+                                                        
+                                                # Run pipeline
+                                                clean_record = parse_and_normalize(raw_record, facility)
+                                                if not clean_record:
+                                                    continue
+                                                    
+                                                result = classifier.classify(clean_record)
+                                                routing = result.get("routing_action", "DROP")
+                                                
+                                                if routing == "DROP":
+                                                    pass
+                                                elif routing == "SOAR_FAST_PATH":
+                                                    soar_meta = result.get("soar_metadata", {})
+                                                    soar_event = {
+                                                        "event_type": "SOAR_FAST_PATH",
+                                                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                        "attack_type": soar_meta.get("attack_type", "UNKNOWN"),
+                                                        "source_ip": soar_meta.get("source_ip", ""),
+                                                        "is_internal": soar_meta.get("is_internal", False),
+                                                        "recommended_action": soar_meta.get("recommended_action", "BLOCK_IP"),
+                                                        "payload_snippet": soar_meta.get("payload_snippet", "")[:200],
+                                                        "facility": facility,
+                                                        "signals": result["signals"],
+                                                        "anomaly_score": result["anomaly_score"],
+                                                        "classifier_stage": "stage2_static",
+                                                    }
+                                                    if action_queue_url:
+                                                        sqs_client.send_message(
+                                                            QueueUrl=action_queue_url,
+                                                            MessageBody=json.dumps(soar_event)
+                                                        )
+                                                        print(f"[SQS-FAST-PATH] Sent obvious attack: {soar_event['attack_type']} from {soar_event['source_ip']} to Action Queue")
+                                                elif routing == "LLM_QUEUE":
+                                                    clean_record["anomalyScore"] = result["anomaly_score"]
+                                                    clean_record["classification"] = result["classification"]
+                                                    clean_record["classifierSignals"] = result["signals"]
+                                                    if "threshold_rules" in result:
+                                                        clean_record["thresholdRules"] = result["threshold_rules"]
+                                                        
+                                                    envelope = llm_agent.analyze(clean_record)
+                                                    if envelope and action_queue_url:
+                                                        sqs_client.send_message(
+                                                            QueueUrl=action_queue_url,
+                                                            MessageBody=json.dumps(envelope)
+                                                        )
+                                                        print(f"[SQS-LLM] Sent LLM finding for {clean_record['message'][:50]} to Action Queue")
+                                    except Exception as line_err:
+                                        print(f"[SQS ERROR] Failed to parse log event line: {line_err}")
+                                        
+                        # Successfully processed S3 notification record(s) -> delete message from SQS
+                        sqs_client.delete_message(
+                            QueueUrl=ingestion_queue_url,
+                            ReceiptHandle=receipt_handle
+                        )
+                    except Exception as msg_err:
+                        print(f"[SQS ERROR] Failed to process message: {msg_err}")
+            except Exception as sqs_err:
+                print(f"[SQS ERROR] Receive loop exception: {sqs_err}")
+                time.sleep(5)
+    else:
+        # Fall back to Kafka mode
+        print(f"Connecting to Kafka Brokers: {KAFKA_BROKERS}")
+        
+        # Init Consumer
+        consumer = None
+        retries = 10
+        while retries > 0:
+            try:
+                consumer = KafkaConsumer(
+                    *L0_TOPICS,
+                    bootstrap_servers=KAFKA_BROKERS,
+                    group_id="aegis-python-log-parser-group",
+                    auto_offset_reset="latest",
+                    value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+                )
+                break
+            except Exception as e:
+                print(f"Kafka consumer connection failed ({e}). Retrying in 3 seconds...")
+                time.sleep(3)
+                retries -= 1
+                
+        if not consumer:
+            print("Failed to start Kafka consumer. Exiting.")
+            sys.exit(1)
+
+        # Init Producer
+        producer = None
+        retries = 10
+        while retries > 0:
+            try:
+                producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BROKERS,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+                )
+                break
+            except Exception as e:
+                print(f"Kafka producer connection failed ({e}). Retrying in 3 seconds...")
+                time.sleep(3)
+                retries -= 1
+                
+        if not producer:
+            print("Failed to start Kafka producer. Exiting.")
+            sys.exit(1)
+
+        # Initialize S3 Client & Archiver
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        aws_bucket = os.getenv("AWS_S3_BUCKET_NAME", "aegis-raw-logs-compliance")
+        aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        local_raw_log_dir = os.getenv("LOCAL_RAW_LOG_DIR", "./raw-logs")
+
+        s3_client = None
+        if aws_access_key and aws_secret_key:
+            try:
+                import boto3
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=aws_region
+                )
+                print(f"[AWS S3] Initialized S3 Client for bucket '{aws_bucket}'.")
+            except Exception as e:
+                print(f"[AWS S3 WARNING] Failed to initialize client: {e}. Falling back to local storage.")
+        else:
+            print("[AWS S3 WARNING] AWS Credentials not set. Raw logs will be saved to local disk for audit.")
+
+        archiver = S3Archiver(s3_client, aws_bucket, local_raw_log_dir)
+
+        # Initialize Lightweight Classifier
+        classifier = LightweightClassifier()
+        stats_interval = 60
+        last_stats_time = time.time()
+        print("[CLASSIFIER] Lightweight anomaly classifier initialized.")
+
+        # Initialize Qwen LLM Security Agent
+        llm_agent = QwenSecurityAgent()
+
+        print("Successfully connected to Kafka brokers! Processing logs...")
+
+        try:
+            for message in consumer:
+                topic = message.topic
+                facility = get_facility(topic)
+                raw_record = message.value
+                
+                # 1. Archive raw log for Compliance/Audit
+                archiver.archive(facility, raw_record)
+                
+                # 2. Parse, normalize, and verify log entries
+                try:
+                    clean_record = parse_and_normalize(raw_record, facility)
+                    if clean_record:
+                        # 3. 3-Stage Classifier Pipeline
+                        result = classifier.classify(clean_record)
+                        routing = result.get("routing_action", "DROP")
+
+                        # ---- Route A: DROP (noise, invalid, benign) ----
+                        if routing == "DROP":
+                            pass  # Silently dropped (already archived)
+
+                        # ---- Route B: SOAR Fast-Path (obvious attacks bypass AI) ----
+                        elif routing == "SOAR_FAST_PATH":
+                            soar_meta = result.get("soar_metadata", {})
+                            soar_event = {
+                                "event_type": "SOAR_FAST_PATH",
+                                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "attack_type": soar_meta.get("attack_type", "UNKNOWN"),
+                                "source_ip": soar_meta.get("source_ip", ""),
+                                "is_internal": soar_meta.get("is_internal", False),
+                                "recommended_action": soar_meta.get("recommended_action", "BLOCK_IP"),
+                                "payload_snippet": soar_meta.get("payload_snippet", "")[:200],
+                                "facility": facility,
+                                "signals": result["signals"],
+                                "anomaly_score": result["anomaly_score"],
+                                "classifier_stage": "stage2_static",
+                            }
+                            producer.send(SOAR_FAST_PATH_TOPIC, soar_event)
+                            producer.flush()
+                            print(
+                                f"[SOAR-FAST] {soar_meta.get('attack_type','?')} "
+                                f"from {soar_meta.get('source_ip','?')} "
+                                f"→ {soar_meta.get('recommended_action','?')} "
+                                f"payload={soar_meta.get('payload_snippet','')[:80]}"
+                            )
+
+                        # ---- Route C: LLM Queue (suspicious → deep AI analysis) ----
+                        elif routing == "LLM_QUEUE":
+                            # Enrich clean record with classifier metadata
+                            clean_record["anomalyScore"] = result["anomaly_score"]
+                            clean_record["classification"] = result["classification"]
+                            clean_record["classifierSignals"] = result["signals"]
+                            if "threshold_rules" in result:
+                                clean_record["thresholdRules"] = result["threshold_rules"]
+
+                            # Write to L2 Verification clean topic
+                            producer.send(L2_TOPIC, clean_record)
+                            producer.flush()
+                            print(
+                                f"[{facility.upper()}] FORWARDED [{result['classification'].upper()}] "
+                                f"score={result['anomaly_score']:.2f} "
+                                f"signals={result['signals']} "
+                                f"msg={clean_record['message'][:80]}"
+                            )
+
+                            # 4. LLM Agent Analysis → SOAR-ready JSON envelope
+                            try:
+                                envelope = llm_agent.analyze(clean_record)
+                                if envelope:
+                                    producer.send(L1_FINDINGS_TOPIC, envelope)
+                                    producer.flush()
+                                    env_routing = envelope.get('routing', {})
+                                    env_payload = envelope.get('payload', {})
+                                    print(
+                                        f"[LLM:{env_routing.get('agent_id','?')}] "
+                                        f"corr={envelope.get('correlation_id','')} "
+                                        f"threat={env_routing.get('threat_detected',False)} "
+                                        f"type={env_routing.get('finding_type','?')} "
+                                        f"MITRE={env_payload.get('mitre_attack_id','')} "
+                                        f"CAPEC={env_payload.get('capec_id','')} "
+                                        f"evidence={env_payload.get('raw_evidence','')[:100]}"
+                                    )
+                            except Exception as llm_err:
+                                print(f"[LLM] Analysis error (non-fatal): {llm_err}")
+
+                except Exception as pe:
+                    print(f"Failed to parse log record: {pe}")
+
+                # Periodic stats logging
+                now = time.time()
+                if now - last_stats_time > stats_interval:
+                    last_stats_time = now
+                    c_stats = classifier.get_stats()
+                    l_stats = llm_agent.get_stats()
+                    print(
+                        f"[PIPELINE STATS] total={c_stats['total_processed']} "
+                        f"s1_invalid={c_stats['stage1_invalid_dropped']} "
+                        f"s2_dropped={c_stats['stage2_static_dropped']} "
+                        f"s2_soar={c_stats['stage2_soar_fast_path']} "
+                        f"s3_threshold={c_stats['stage3_threshold_triggered']} "
+                        f"benign={c_stats['benign_dropped']} "
+                        f"suspicious={c_stats['suspicious_forwarded']} "
+                        f"anomalous={c_stats['anomalous_forwarded']} "
+                        f"threats={c_stats['threat_forwarded']} "
+                        f"drop_rate={c_stats.get('drop_rate', 0)}% "
+                        f"soar_bypass={c_stats.get('soar_bypass_rate', 0)}%"
+                    )
+                    print(
+                        f"[LLM STATS] calls={l_stats['total_calls']} "
+                        f"ok={l_stats['successful']} fail={l_stats['failed']} "
+                        f"fallback={l_stats['fallbacks']} "
+                        f"A={l_stats['agent_a_calls']} B={l_stats['agent_b_calls']} C={l_stats['agent_c_calls']} "
+                        f"| errors: timeout={l_stats.get('errors_timeout',0)} "
+                        f"rate_limit={l_stats.get('errors_rate_limit',0)} "
+                        f"auth={l_stats.get('errors_auth',0)} "
+                        f"parse={l_stats.get('errors_parse_json',0)} "
+                        f"network={l_stats.get('errors_network',0)} "
+                        f"server={l_stats.get('errors_server',0)} "
+                        f"| circuit_breaker={l_stats.get('circuit_breaker_state','closed')} "
+                        f"trips={l_stats.get('circuit_breaker_trips',0)}"
+                    )
+                    
+        except KeyboardInterrupt:
+            print("Shutting down log parser pipeline.")
+            stats = classifier.get_stats()
+            print(f"[CLASSIFIER FINAL STATS] {stats}")
+        finally:
+            consumer.close()
 
 if __name__ == "__main__":
     main()

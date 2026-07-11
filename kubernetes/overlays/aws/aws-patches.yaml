@@ -69,6 +69,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
   ports:
     - port: 80
       targetPort: 80

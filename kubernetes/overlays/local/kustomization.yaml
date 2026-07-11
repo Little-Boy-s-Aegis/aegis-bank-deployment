@@ -12,6 +12,11 @@ secretGenerator:
       - jwt-secret=aegis-jwt-secure-signing-key-high-entropy-12345
       - aegis-security-sync-token=aegis-sync-token-9876-xyz
       - dashscope-api-key=mock-dashscope-api-key-value
+      - llm-provider=bedrock
+      - bedrock-model-id=qwen.qwen3-coder-next
+      - bedrock-region=ap-southeast-2
+      - aws-access-key-id=AKIATEMPLATEACCESSKEY
+      - aws-secret-access-key=MockSecretAccessKeyTemplateValue0000000
 
 generatorOptions:
   disableNameSuffixHash: true
