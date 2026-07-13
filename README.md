@@ -147,10 +147,26 @@ docker compose restart be-backend
 
 ---
 
-## 🚀 Advanced Deployment & Gateway Hardening
+## Advanced Deployment and Gateway Hardening
 
 * **Nginx Reverse Proxy Security**: Patched an Nginx config bug regarding security headers inheritance (ensuring CORS, Content-Security-Policy, and clickjacking protection headers flow correctly to downstream proxy routes). 
 * **Proxy Gateway Resilience**: Resolved Nginx DNS cache failures yielding `502 Bad Gateway` errors. Enabled dynamic name resolution for backend containers (using the Docker internal DNS resolver `127.0.0.11` with a short `valid=5s` TTL).
 * **API Cache Tuning**: Integrated structured `Cache-Control` header rules to ensure browser clients do not cache sensitive financial transactions or security states.
 * **GAP Agent Controls**: Configured and deployed specialist Named Agent Routers (GAP-02) and Layer 1 Dynamic Prompts (GAP-01) setups to customize telemetry collection prompts.
 * **Centralized Logging (Fluent-Bit)**: Deployed Fluent-Bit containers to ingest, parse, and structure multi-container log fields for downstream Kafka events delivery.
+
+---
+
+## Related Repositories
+
+| Repository | Description | Clone directory |
+|---|---|---|
+| [aegis-bank-backend](https://github.com/Little-Boy-s-Aegis/aegis-bank-backend) | Spring Boot banking REST API | `BE/` |
+| [aegis-bank-web-client](https://github.com/Little-Boy-s-Aegis/aegis-bank-web-client) | Next.js banking portal | `FE_Web/` |
+| [aegis-bank-mobile-app](https://github.com/Little-Boy-s-Aegis/aegis-bank-mobile-app) | Flutter mobile banking app | `FE_App/` |
+| [dashboard](https://github.com/Little-Boy-s-Aegis/dashboard) | SOC Dashboard (Go + React) | `dashboard/` |
+| [agent-layer-1](https://github.com/Little-Boy-s-Aegis/agent-layer-1) | AI Sensor Agents | `agent-layer-1/` |
+| [agent-layer-2](https://github.com/Little-Boy-s-Aegis/agent-layer-2) | Meta Analyzer / SOAR orchestrator prompts | `agent-layer-2/` |
+| [aegis-soar-engine](https://github.com/Little-Boy-s-Aegis/aegis-soar-engine) | SOAR Decision Engine | `soar-engine/` |
+| [aegis-staging-sandbox](https://github.com/Little-Boy-s-Aegis/aegis-staging-sandbox) | Staging simulation APIs | `staging-sandbox/` |
+| [aegis-bank-terraform](https://github.com/Little-Boy-s-Aegis/aegis-bank-terraform) | AWS Terraform infrastructure | `terraform/` |
