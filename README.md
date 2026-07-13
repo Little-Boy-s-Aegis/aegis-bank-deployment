@@ -1,172 +1,266 @@
-# Aegis Bank Ecosystem Orchestration & Deployment
+# Aegis Bank Deployment
 
-This folder contains the complete orchestration configuration for the Aegis Bank Attack & Defense Ecosystem. With Nginx configured as a reverse proxy, the entire multi-service stack runs through a single gateway port, avoiding port collisions and Cross-Origin Resource Sharing (CORS) issues.
+Local orchestration and deployment assets for the complete Little Boy's Aegis
+banking and AI-native SOC platform. The default Docker Compose stack joins the
+bank applications, telemetry pipeline, Layer 1/Layer 2 processing, SOAR
+execution, SOC dashboard, policy engine, secrets service, and safe staging
+targets behind a loopback-only Nginx gateway.
 
----
-
-## Folder Structure
+## Stack Overview
 
 ```text
-aegis-bank-deployment/
-├── .env.example         # Template file for environment variables
-├── docker-compose.yml   # Multi-service container definitions
-├── nginx/
-│   └── default.conf     # Reverse proxy / API gateway configuration
-└── README.md            # This documentation
+browser --> Nginx :80
+              |-- /           --> Next.js banking portal
+              |-- /api-bank/  --> Spring Boot banking API
+              |-- /soc/       --> React SOC dashboard
+              `-- /api/       --> Go SOC API
+
+bank + gateway logs --> Fluent Bit --> Kafka --> log parser / Layer 1
+                                                |
+                                                v
+                                        SOAR orchestrators (HA)
+                                                |
+                                      OPA + Redis + PostgreSQL
+                                                |
+                                      action workers (HA)
+                                                |
+                                   staging sandbox / notifications
 ```
 
----
+## Included Services
 
-## Quick Start (Running with 1 Command)
+| Group | Services | Role |
+|---|---|---|
+| Data | `postgres`, `redis`, `qdrant` | Durable application/audit data, SOAR state, vectors |
+| Streaming | `kafka-1..3`, `kafka-init`, `kafka-ui` | Three-node KRaft event bus, topic bootstrap, Kafdrop UI |
+| Banking | `be-backend`, `fe-web` | Spring Boot API and Next.js client |
+| SOC | `dashboard-backend`, `dashboard-frontend` | Go API and React operator UI |
+| Telemetry | `fluent-bit`, `log-parser`, `vector-db-init` | Log collection, classification, and vector bootstrap |
+| SOAR | active/standby orchestrators and action workers | Decision, HA, and response execution |
+| Policy/secrets | `opa`, `vault`, `vault-init` | Authorization and runtime secret initialization |
+| Gateway/sandbox | `nginx`, `staging-sandbox` | Single entrypoint and safe connector target |
 
-### 1. Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+## Prerequisites
 
-### 2. Configure Environment Variables
-Copy the template `.env.example` file to `.env`:
+- Docker Engine with the Compose v2 plugin
+- At least 8 GB RAM available to Docker; more is recommended for the full stack
+- `openssl` or another secure random generator for local secrets
+- The component repositories checked out as siblings
+
+The Compose build contexts expect this workspace shape. Symlinks may be used for
+the historical `BE`, `FE_Web`, and `soar-engine` names:
+
+```text
+workspace/
+├── BE/ or BE -> aegis-bank-backend
+├── FE_Web/ or FE_Web -> aegis-bank-web-client
+├── dashboard/
+├── soar-engine/ or soar-engine -> aegis-soar-engine
+├── agent-layer-1/
+├── agent-layer-2/
+└── aegis-bank-deployment/
+```
+
+## Configure Secrets
+
+Create `.env` only if one is not already present:
+
 ```bash
 cp .env.example .env
 ```
-*(Open the `.env` file to customize passwords, ports, or secrets if necessary. By default, it works out-of-the-box.)*
 
-### 3. Launch the Stack
-Run this command from inside the `aegis-bank-deployment` directory:
+At minimum, set independent values for:
+
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+- `AEGIS_SECURITY_SYNC_TOKEN`
+- `VAULT_ROOT_TOKEN`
+
+Generate local values with `openssl rand -hex 32`. Configure LLM and vendor
+credentials only for integrations you intend to exercise. Defaults prefixed
+with `mock-` keep many connectors in simulation mode.
+
+Never commit `.env`, generated backup data, real customer telemetry, cloud
+credentials, or vendor tokens. Before starting, render and validate the merged
+configuration without printing it into shared logs:
+
+```bash
+docker compose config --quiet
+```
+
+## Start the Platform
+
 ```bash
 docker compose up --build -d
-```
-This command will:
-1. Compile the Java REST API (`BE`) and build its docker image.
-2. Compile the Go SOC Backend (`dashboard/backend`) and build its docker image.
-3. Package the React SOC Dashboard (`dashboard/frontend`) and build its docker image.
-4. Compile the Next.js Web Portal (`FE_Web`) and build its docker image.
-5. Launch PostgreSQL, 3-node Kafka HA cluster, Kafdrop, and Nginx.
-
----
-
-## Kafka High Availability (3-Node KRaft Cluster)
-
-The deployment uses a **3-node Apache Kafka cluster** running in **KRaft mode** (no Zookeeper dependency). This provides fault tolerance and data durability for the security event streaming pipeline.
-
-### Architecture
-
-```text
-                    ┌──────────────────────────────────────────────┐
-                    │        KRaft Controller Quorum (Raft)        │
-                    │  kafka-1:9093  kafka-2:9093  kafka-3:9093    │
-                    └──────────────────────────────────────────────┘
-                           │              │              │
-                    ┌──────┴──────┐┌──────┴──────┐┌──────┴──────┐
-                    │  Broker #1  ││  Broker #2  ││  Broker #3  │
-                    │  kafka-1    ││  kafka-2    ││  kafka-3    │
-                    │  :29092 int ││  :29092 int ││  :29092 int │
-                    │  :9094 ext  ││  :9095 ext  ││  :9096 ext  │
-                    └─────────────┘└─────────────┘└─────────────┘
-                           │              │              │
-              ┌────────────┴──────────────┴──────────────┘
-              │    Producers & Consumers connect to all brokers
-              ├── be-backend     (Spring Boot - Security Event Producer)
-              └── dashboard-backend  (Go - Security Event Consumer)
+docker compose ps
 ```
 
-### HA Configuration Parameters
+Initial startup waits for PostgreSQL, Redis, Kafka, Qdrant, topic creation,
+Vault initialization, and vector ingestion before dependent services settle.
+Follow progress with:
 
-| Parameter | Value | Purpose |
+```bash
+docker compose logs -f --tail=100
+```
+
+## Entrypoints
+
+Only the gateway and staging UI are published to the host by the default file;
+both bind to `127.0.0.1`.
+
+| Component | URL | Notes |
 |---|---|---|
-| `replication.factor` | `3` | Each partition is replicated across all 3 brokers |
-| `min.insync.replicas` | `2` | At least 2 replicas must acknowledge a write |
-| `controller.quorum.voters` | `1@kafka-1,2@kafka-2,3@kafka-3` | Raft consensus with 3 voters |
-| `transaction.state.log.replication.factor` | `3` | Transaction logs replicated across all brokers |
+| Banking portal | `http://localhost/` | Nginx to Next.js |
+| Banking API | `http://localhost/api-bank/` | Nginx strips `/api-bank` before Spring Boot |
+| SOC dashboard | `http://localhost/soc/` | React SPA |
+| SOC API | `http://localhost/api/` | Go API |
+| Staging sandbox | `http://localhost:8095/` | Basic-auth simulator UI |
 
-### Failure Tolerance
-- **1 broker down**: Cluster continues operating normally. No data loss.
-- **2 brokers down**: Cluster loses quorum and stops accepting writes. Existing data is preserved on the surviving node.
+PostgreSQL, Redis, Qdrant, Kafka brokers, Kafdrop, Vault, OPA, and application
+ports are internal-only. Use `docker compose exec`, an explicit temporary
+override, or a secure tunnel for diagnostics; do not publish them broadly.
 
----
+## Event Pipeline
 
-## Entrypoints & Ports
+Kafka runs three combined KRaft broker/controller nodes with replication factor
+`3` and minimum in-sync replicas `2`. One broker can fail without losing write
+availability; two broker failures remove quorum.
 
-Once the containers are running, you can access the components at the following URLs:
+`kafka-init` provisions the required topics before the telemetry consumers
+start. Fluent Bit tails shared Nginx and Spring Boot logs, while the log parser
+classifies events, maintains threshold state in Redis, writes raw-log backups,
+and emits Layer 1 or deterministic fast-path findings. The SOAR layer consumes
+those findings and publishes decisions/actions back to Kafka and the dashboard.
 
-| Component | Host Port | Docker Internal | URL / Entrypoint |
-|---|---|---|---|
-| **API Gateway (Nginx)** | `80` | `80` | **`http://localhost/`** *(Main Entrance)* |
-| **Next.js Web Portal** | `3000` | `3000` | `http://localhost/` *(Proxied by Nginx)* |
-| **Banking Java API** | `8080` | `8080` | `http://localhost/api-bank/` *(Proxied by Nginx)* |
-| **Go SOC API** | `8082` | `8082` | `http://localhost/api/` *(Proxied by Nginx)* |
-| **SOC Dashboard Frontend** | `3001` | `3001` | `http://localhost/soc/` *(Proxied by Nginx)* |
-| **Kafdrop (Kafka UI)** | `9000` | `9000` | `http://localhost:9000/` *(Direct)* |
-| **Kafka Broker 1** | `9094` | `29092` | External client access |
-| **Kafka Broker 2** | `9095` | `29092` | External client access |
-| **Kafka Broker 3** | `9096` | `29092` | External client access |
+Inspect a topic from inside the first broker:
 
----
+```bash
+docker compose exec kafka-1 \
+  /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-1:29092 \
+  --topic l1.agent.findings \
+  --from-beginning --max-messages 5
+```
 
-## Useful Management Commands
+## SOAR and Autopilot Warning
 
-### Stop the entire ecosystem
+The current Compose file sets `SOC_AUTOPILOT_ENABLED` to `true` for the SOAR
+orchestrators. OPA, verification, critical-asset checks, rate limits, and the
+staging Fortinet target still gate execution, but you must review the rendered
+configuration before supplying any real AWS or vendor credentials.
+
+For analysis-only operation, override autopilot for both orchestrator services
+in a local Compose override or edit a private deployment copy. Confirm that
+actions remain suggested/queued and exercise rollback in the staging sandbox
+before connecting production integrations.
+
+## Common Operations
+
+```bash
+docker compose ps
+docker compose logs -f dashboard-backend soar-orchestrator soar-action-worker
+docker compose restart dashboard-backend
+docker compose build be-backend
+docker compose up -d be-backend
+docker compose pull
+```
+
+Stop containers while retaining volumes:
+
 ```bash
 docker compose down
 ```
 
-### Stop and clean data volumes (resets database/Kafka logs)
+Delete all named volumes and local service data:
+
 ```bash
 docker compose down -v
 ```
 
-### View real-time container logs
+The `-v` operation is destructive: it removes database, Kafka, Redis, Qdrant,
+Vault, and Fluent Bit state. Use the scripts in `scripts/` and test restoration
+before relying on backups.
+
+## Validation and Tests
+
+Configuration and policy checks:
+
 ```bash
-docker compose logs -f
+docker compose config --quiet
+docker compose exec opa opa test /policies -v
+docker compose ps
 ```
 
-### View Kafka cluster logs only
+Deployment tests are Python/pytest based:
+
 ```bash
-docker compose logs -f kafka-1 kafka-2 kafka-3
+python3 -m pytest -q tests
 ```
 
-### View the centralized logging pipeline
-```bash
-docker compose logs -f fluent-bit log-parser
+The suite includes container-security, frontend-security, pentest automation,
+prompt evaluation, and SOAR security checks. Some tests require the full stack
+to be healthy and should run only against an authorized local/staging target.
+
+## Alternative Deployment Assets
+
+- `docker-compose.network-enforcement.yml` adds the firewall-enforcement path.
+- `kubernetes/base/` provides raw Kustomize resources for core services.
+- `helm/aegis-platform/` provides a configurable Helm chart for local/AWS
+  environments.
+- `opa/policies/` contains authorization and SOAR policy data/tests.
+- `scripts/` contains backup and Kafka initialization helpers.
+
+These targets have separate secret, storage, ingress, and image requirements.
+Review manifests and replace demonstration values before cluster deployment.
+
+## Repository Layout
+
+```text
+docker-compose.yml                     # Full local platform
+docker-compose.network-enforcement.yml # Optional enforcement overlay
+nginx/                                 # Gateway and route policy
+fluent-bit/                            # Log collection and filtering
+log-parser/                            # Telemetry classification
+opa/                                   # Authorization policies and tests
+vault/                                 # Development Vault configuration/init
+staging-sandbox/                       # Embedded safe response simulator
+firewall-enforcer/                     # Network enforcement helper
+kubernetes/base/                       # Kustomize manifests
+helm/aegis-platform/                   # Helm chart
+scripts/                               # Backup and bootstrap utilities
+tests/                                 # Security/integration tests
 ```
 
-Fluent Bit is the Fluentd-family log forwarder used by this stack. It tails:
-- Nginx access logs from `/var/log/nginx/aegis_access.log` into `l0.input.apigw`
-- Nginx error logs from `/var/log/nginx/aegis_error.log` into `l0.input.waf`
-- Spring Boot app logs from `/var/log/bank/application.log` into `l0.input.ebanking-app`
-- cloned threat alerts into `aegis.security.events`
+## Troubleshooting
 
-Kafka topics are provisioned by `kafka-init` before Fluent Bit and `log-parser` start. To inspect a stream:
-```bash
-docker compose exec kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:29092 --topic l0.input.apigw --from-beginning --max-messages 5
-```
+- Run `docker compose config --quiet` first for missing variables or YAML errors.
+- Use `docker compose ps` to find unhealthy dependencies, then inspect that
+  service's logs.
+- If vector initialization fails, check Qdrant health, mounted Layer 1/2 paths,
+  and the selected embedding provider.
+- If the gateway returns `502`, verify the target container is healthy and on
+  `aegis-network`; Nginx uses Docker DNS for service resolution.
+- If Kafka consumers stall, inspect broker health and `kafka-init` completion.
+- If SOAR actions are denied, inspect OPA, verification strength, critical-asset
+  results, execution windows, Redis rate limits, and autopilot state.
 
-### Restart a specific service (e.g. rebuild backend changes)
-```bash
-docker compose restart be-backend
-```
-*(To build from scratch after code updates: `docker compose build be-backend && docker compose up -d be-backend`)*
+### Current sandbox asset-inventory gap
 
----
-
-## Advanced Deployment and Gateway Hardening
-
-* **Nginx Reverse Proxy Security**: Patched an Nginx config bug regarding security headers inheritance (ensuring CORS, Content-Security-Policy, and clickjacking protection headers flow correctly to downstream proxy routes). 
-* **Proxy Gateway Resilience**: Resolved Nginx DNS cache failures yielding `502 Bad Gateway` errors. Enabled dynamic name resolution for backend containers (using the Docker internal DNS resolver `127.0.0.11` with a short `valid=5s` TTL).
-* **API Cache Tuning**: Integrated structured `Cache-Control` header rules to ensure browser clients do not cache sensitive financial transactions or security states.
-* **GAP Agent Controls**: Configured and deployed specialist Named Agent Routers (GAP-02) and Layer 1 Dynamic Prompts (GAP-01) setups to customize telemetry collection prompts.
-* **Centralized Logging (Fluent-Bit)**: Deployed Fluent-Bit containers to ingest, parse, and structure multi-container log fields for downstream Kafka events delivery.
-
----
+The Compose file points `ASSET_INVENTORY_API_URL` at
+`asset-inventory:8083/api/v1/assets/critical`, but the embedded
+`staging-sandbox/app.py` currently starts only its `8095` listener. The separate
+`aegis-staging-sandbox` repository includes the `8083` asset-inventory listener.
+Until the embedded copy is synchronized, use that repository as the sandbox
+build context or point the policy evaluator at another reviewed inventory
+service; otherwise critical-asset lookups fail closed or return the evaluator's
+unavailable behavior.
 
 ## Related Repositories
 
-| Repository | Description | Clone directory |
-|---|---|---|
-| [aegis-bank-backend](https://github.com/Little-Boy-s-Aegis/aegis-bank-backend) | Spring Boot banking REST API | `BE/` |
-| [aegis-bank-web-client](https://github.com/Little-Boy-s-Aegis/aegis-bank-web-client) | Next.js banking portal | `FE_Web/` |
-| [aegis-bank-mobile-app](https://github.com/Little-Boy-s-Aegis/aegis-bank-mobile-app) | Flutter mobile banking app | `FE_App/` |
-| [dashboard](https://github.com/Little-Boy-s-Aegis/dashboard) | SOC Dashboard (Go + React) | `dashboard/` |
-| [agent-layer-1](https://github.com/Little-Boy-s-Aegis/agent-layer-1) | AI Sensor Agents | `agent-layer-1/` |
-| [agent-layer-2](https://github.com/Little-Boy-s-Aegis/agent-layer-2) | Meta Analyzer / SOAR orchestrator prompts | `agent-layer-2/` |
-| [aegis-soar-engine](https://github.com/Little-Boy-s-Aegis/aegis-soar-engine) | SOAR Decision Engine | `soar-engine/` |
-| [aegis-staging-sandbox](https://github.com/Little-Boy-s-Aegis/aegis-staging-sandbox) | Staging simulation APIs | `staging-sandbox/` |
-| [aegis-bank-terraform](https://github.com/Little-Boy-s-Aegis/aegis-bank-terraform) | AWS Terraform infrastructure | `terraform/` |
+- [`aegis-bank-backend`](https://github.com/Little-Boy-s-Aegis/aegis-bank-backend)
+- [`aegis-bank-web-client`](https://github.com/Little-Boy-s-Aegis/aegis-bank-web-client)
+- [`dashboard`](https://github.com/Little-Boy-s-Aegis/dashboard)
+- [`agent-layer-1`](https://github.com/Little-Boy-s-Aegis/agent-layer-1)
+- [`agent-layer-2`](https://github.com/Little-Boy-s-Aegis/agent-layer-2)
+- [`aegis-soar-engine`](https://github.com/Little-Boy-s-Aegis/aegis-soar-engine)
+- [`aegis-bank-terraform`](https://github.com/Little-Boy-s-Aegis/aegis-bank-terraform)
