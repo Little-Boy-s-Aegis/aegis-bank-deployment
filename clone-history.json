@@ -638,5 +638,6 @@
   },
   "cumulative_clones_total": 4202,
   "last_updated": "2026-07-16T19:20:55.205981Z",
-  "uniques_cumulative_total": 1689
+  "uniques_cumulative_total": 1689,
+  "human_ratio": 0.1
 }

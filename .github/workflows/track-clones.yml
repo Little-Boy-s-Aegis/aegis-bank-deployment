@@ -64,6 +64,7 @@ jobs:
           history.setdefault("docker_cumulative_pulls", 0)
           history.setdefault("release_historical_seed", 0)
           history.setdefault("release_cumulative_downloads", 0)
+          history.setdefault("human_ratio", 0.10)
           repos_history = history.setdefault("repositories", {})
 
           gh_headers = {
@@ -104,7 +105,7 @@ jobs:
                   if isinstance(val, int):
                       daily_clones[d_str] = {"count": val, "uniques": int(val * 0.3) or 1}
 
-              # Calculate totals for this repository (including database history which never resets)
+              # Calculate cumulative totals for this repository (which never resets as history is kept in JSON)
               repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) for d in daily_clones.values() if isinstance(d, dict))
               repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) for d in daily_clones.values() if isinstance(d, dict))
               
@@ -147,9 +148,10 @@ jobs:
               print(f"Error fetching Docker pulls: {e}")
               docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
 
-          # Use raw accumulated values from the highest repository directly without any formulas
-          grand_clones = max_clones_across_repos
-          grand_uniques = max_uniques_across_repos
+          # Apply human ratio filter to the highest repository's accumulated stats
+          human_ratio = history.get("human_ratio", 0.10)
+          grand_clones = int(max_clones_across_repos * human_ratio)
+          grand_uniques = int(max_uniques_across_repos * human_ratio)
 
           history["cumulative_clones_total"] = grand_clones
           history["uniques_cumulative_total"] = grand_uniques
@@ -195,8 +197,8 @@ jobs:
               }, f, indent=2)
 
           print("Done! Stats updated successfully:")
-          print(f"- Cumulative Clones (Highest Repo): {grand_clones}")
-          print(f"- Cumulative Unique Cloners (Highest Repo): {grand_uniques}")
+          print(f"- Cumulative Clones (Highest Repo * Human Ratio): {grand_clones}")
+          print(f"- Cumulative Unique Cloners (Highest Repo * Human Ratio): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
           '
@@ -206,5 +208,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update statistics to cumulative highest repo stats [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update statistics to cumulative highest repo stats with human filter [skip ci]"
           git push
