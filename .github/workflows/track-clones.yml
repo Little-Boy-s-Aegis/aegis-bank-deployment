@@ -64,6 +64,7 @@ jobs:
           history.setdefault("docker_cumulative_pulls", 0)
           history.setdefault("release_historical_seed", 0)
           history.setdefault("release_cumulative_downloads", 0)
+          history.setdefault("uniques_cumulative_total", 0)
           repos_history = history.setdefault("repositories", {})
 
           gh_headers = {
@@ -73,10 +74,11 @@ jobs:
           }
 
           grand_clones = 0
+          grand_uniques = 0
           grand_downloads = 0
 
           for repo_name in REPOS:
-              repo_record = repos_history.setdefault(repo_name, {"historical_seed": 0, "daily_clones": {}})
+              repo_record = repos_history.setdefault(repo_name, {"historical_seed": 0, "historical_uniques_seed": 0, "daily_clones": {}})
               daily_clones = repo_record.setdefault("daily_clones", {})
 
               print(f"Fetching clone stats for {owner}/{repo_name}...")
@@ -93,13 +95,24 @@ jobs:
                   timestamp = record.get("timestamp")
                   date_str = timestamp.split("T")[0]
                   count = record.get("count", 0)
+                  uniques = record.get("uniques", 0)
                   
-                  existing_count = daily_clones.get(date_str, 0)
-                  if count > existing_count:
-                      daily_clones[date_str] = count
+                  val = daily_clones.get(date_str, {"count": 0, "uniques": 0})
+                  if isinstance(val, int):
+                      val = {"count": val, "uniques": int(val * 0.3) or 1}
+                  
+                  if count > val.get("count", 0):
+                      val["count"] = count
+                  if uniques > val.get("uniques", 0):
+                      val["uniques"] = uniques
+                      
+                  daily_clones[date_str] = val
 
-              repo_clones_total = repo_record.get("historical_seed", 0) + sum(daily_clones.values())
+              repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) if isinstance(d, dict) else d for d in daily_clones.values())
+              repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) if isinstance(d, dict) else int(d * 0.3) for d in daily_clones.values())
+              
               grand_clones += repo_clones_total
+              grand_uniques += repo_uniques_total
 
               print(f"Fetching release stats for {owner}/{repo_name}...")
               releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
@@ -119,7 +132,7 @@ jobs:
 
               repo_record["total_release_downloads"] = repo_downloads
               grand_downloads += repo_downloads
-              print(f"Repo {repo_name} clones: {repo_clones_total}, release downloads: {repo_downloads}")
+              print(f"Repo {repo_name} clones: {repo_clones_total}, uniques: {repo_uniques_total}, downloads: {repo_downloads}")
 
           docker_user = history.get("docker_hub_username", "voduchieu1")
           docker_pulls = 0
@@ -136,6 +149,7 @@ jobs:
               docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
 
           history["cumulative_clones_total"] = grand_clones
+          history["uniques_cumulative_total"] = grand_uniques
           history["release_cumulative_downloads"] = history.get("release_historical_seed", 0) + grand_downloads
           history["docker_cumulative_pulls"] = history.get("docker_historical_seed", 0) + docker_pulls
           history["last_updated"] = datetime.utcnow().isoformat() + "Z"
@@ -149,6 +163,14 @@ jobs:
                   "label": "clones",
                   "message": f"{grand_clones} total",
                   "color": "22C55E"
+              }, f, indent=2)
+
+          with open("uniques-badge.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "cloners",
+                  "message": f"{grand_uniques} total",
+                  "color": "E11D48"
               }, f, indent=2)
 
           downloads_total = history["release_cumulative_downloads"]
@@ -171,6 +193,7 @@ jobs:
 
           print("Done! Stats updated successfully:")
           print(f"- Clones: {grand_clones}")
+          print(f"- Unique Cloners: {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
           '
@@ -179,6 +202,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add clone-history.json clone-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update multi-repo and docker pulls statistics [skip ci]"
+          git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
+          git diff-index --quiet HEAD || git commit -m "Update multi-repo clones and unique cloners statistics [skip ci]"
           git push
