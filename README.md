@@ -3,7 +3,7 @@
 [![Git Clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Little-Boy-s-Aegis/aegis-bank-deployment/main/clone-badge.json)](https://github.com/Little-Boy-s-Aegis/aegis-bank-deployment)
 [![Unique Cloners](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Little-Boy-s-Aegis/aegis-bank-deployment/main/uniques-badge.json)](https://github.com/Little-Boy-s-Aegis/aegis-bank-deployment)
 [![Release Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Little-Boy-s-Aegis/aegis-bank-deployment/main/downloads-badge.json)](https://github.com/Little-Boy-s-Aegis/aegis-bank-deployment/releases)
-[![Docker Pulls](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Little-Boy-s-Aegis/aegis-bank-deployment/main/docker-badge.json)](https://hub.docker.com/u/voduchieu1)
+[![Stars](https://img.shields.io/github/stars/Little-Boy-s-Aegis/aegis-bank-deployment?color=F59E0B&logo=github)](https://github.com/Little-Boy-s-Aegis/aegis-bank-deployment/stargazers)
 
 Local orchestration and deployment assets for the complete Little Boy's Aegis
 banking and AI-native SOC platform. The default Docker Compose stack joins the
