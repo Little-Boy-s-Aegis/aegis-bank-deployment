@@ -65,6 +65,7 @@ jobs:
           history.setdefault("release_historical_seed", 0)
           history.setdefault("release_cumulative_downloads", 0)
           history.setdefault("uniques_cumulative_total", 0)
+          history.setdefault("human_ratio", 0.10)
           repos_history = history.setdefault("repositories", {})
 
           gh_headers = {
@@ -73,8 +74,8 @@ jobs:
               "User-Agent": "Github-Stats-Tracker"
           }
 
-          grand_clones = 0
-          grand_uniques = 0
+          max_clones_across_repos = 0
+          max_uniques_across_repos = 0
           grand_downloads = 0
 
           for repo_name in REPOS:
@@ -100,7 +101,7 @@ jobs:
                   
                   daily_clones[date_str] = {"count": count, "uniques": uniques}
 
-              # Backward compatibility check for legacy integer data for days outside 14 days
+              # Backward compatibility check for legacy integer data
               for d_str, val in list(daily_clones.items()):
                   if isinstance(val, int):
                       daily_clones[d_str] = {"count": val, "uniques": int(val * 0.3) or 1}
@@ -108,8 +109,10 @@ jobs:
               repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) for d in daily_clones.values() if isinstance(d, dict))
               repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) for d in daily_clones.values() if isinstance(d, dict))
               
-              grand_clones += repo_clones_total
-              grand_uniques += repo_uniques_total
+              if repo_clones_total > max_clones_across_repos:
+                  max_clones_across_repos = repo_clones_total
+              if repo_uniques_total > max_uniques_across_repos:
+                  max_uniques_across_repos = repo_uniques_total
 
               print(f"Fetching release stats for {owner}/{repo_name}...")
               releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
@@ -129,7 +132,7 @@ jobs:
 
               repo_record["total_release_downloads"] = repo_downloads
               grand_downloads += repo_downloads
-              print(f"Repo {repo_name} clones: {repo_clones_total}, uniques: {repo_uniques_total}, downloads: {repo_downloads}")
+              print(f"Repo {repo_name} raw clones: {repo_clones_total}, raw uniques: {repo_uniques_total}, downloads: {repo_downloads}")
 
           docker_user = history.get("docker_hub_username", "voduchieu1")
           docker_pulls = 0
@@ -144,6 +147,10 @@ jobs:
           except Exception as e:
               print(f"Error fetching Docker pulls: {e}")
               docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
+
+          human_ratio = history.get("human_ratio", 0.10)
+          grand_clones = int(max_clones_across_repos * human_ratio)
+          grand_uniques = int(max_uniques_across_repos * human_ratio)
 
           history["cumulative_clones_total"] = grand_clones
           history["uniques_cumulative_total"] = grand_uniques
@@ -189,8 +196,8 @@ jobs:
               }, f, indent=2)
 
           print("Done! Stats updated successfully:")
-          print(f"- Clones: {grand_clones}")
-          print(f"- Unique Cloners: {grand_uniques}")
+          print(f"- Clones (Max Repo * Human Ratio): {grand_clones}")
+          print(f"- Unique Cloners (Max Repo * Human Ratio): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
           '
@@ -200,5 +207,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update multi-repo clones and unique cloners statistics with exact API data [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update statistics filtering out bots and taking highest repo [skip ci]"
           git push
