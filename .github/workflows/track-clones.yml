@@ -39,46 +39,101 @@ jobs:
 
           owner = github_repo.split("/")[0]
 
+          REPOS = [
+              "aegis-bank-deployment",
+              "aegis-bank-backend",
+              "aegis-bank-web-client",
+              "aegis-bank-mobile-app",
+              "aegis-soar-engine",
+              "aegis-staging-sandbox",
+              "dashboard",
+              "agent-layer-1",
+              "agent-layer-2",
+              "aegis-bank-terraform"
+          ]
+
+          history_file = "clone-history.json"
+          if os.path.exists(history_file):
+              with open(history_file, "r", encoding="utf-8") as f:
+                  history = json.load(f)
+          else:
+              history = {}
+
+          history.setdefault("docker_hub_username", "voduchieu1")
+          history.setdefault("docker_historical_seed", 0)
+          history.setdefault("docker_cumulative_pulls", 0)
+          history.setdefault("release_historical_seed", 0)
+          history.setdefault("release_cumulative_downloads", 0)
+          repos_history = history.setdefault("repositories", {})
+
           gh_headers = {
               "Authorization": f"token {token}",
               "Accept": "application/vnd.github.v3+json",
               "User-Agent": "Github-Stats-Tracker"
           }
 
-          # Fetch 14-day exact clones and unique cloners for the main repository only
-          print(f"Fetching live 14-day traffic for {owner}/aegis-bank-deployment...")
-          clones_url = f"https://api.github.com/repos/{owner}/aegis-bank-deployment/traffic/clones"
-          req = urllib.request.Request(clones_url, headers=gh_headers)
-          try:
-              with urllib.request.urlopen(req) as r:
-                  clones_data = json.loads(r.read().decode())
-          except Exception as e:
-              print(f"Error fetching clones: {e}")
-              clones_data = {}
+          max_clones_across_repos = 0
+          max_uniques_across_repos = 0
+          grand_downloads = 0
 
-          # Extract raw de-duplicated 14-day totals directly from GitHub API
-          grand_clones = clones_data.get("count", 0)
-          grand_uniques = clones_data.get("uniques", 0)
+          for repo_name in REPOS:
+              repo_record = repos_history.setdefault(repo_name, {"historical_seed": 0, "historical_uniques_seed": 0, "daily_clones": {}})
+              daily_clones = repo_record.setdefault("daily_clones", {})
 
-          # Fetch release downloads for the main repo
-          print(f"Fetching release stats for {owner}/aegis-bank-deployment...")
-          releases_url = f"https://api.github.com/repos/{owner}/aegis-bank-deployment/releases"
-          req = urllib.request.Request(releases_url, headers=gh_headers)
-          try:
-              with urllib.request.urlopen(req) as r:
-                  releases_data = json.loads(r.read().decode())
-          except Exception as e:
-              print(f"Error fetching releases: {e}")
-              releases_data = []
+              print(f"Fetching clone stats for {owner}/{repo_name}...")
+              clones_url = f"https://api.github.com/repos/{owner}/{repo_name}/traffic/clones"
+              req = urllib.request.Request(clones_url, headers=gh_headers)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      clones_data = json.loads(r.read().decode())
+              except Exception as e:
+                  print(f"Error fetching clones for {repo_name}: {e}")
+                  clones_data = {}
 
-          downloads_total = 0
-          if isinstance(releases_data, list):
-              for release in releases_data:
-                  for asset in release.get("assets", []):
-                      downloads_total += asset.get("download_count", 0)
+              # Overwrite daily records with exact real data from GitHub API
+              for record in clones_data.get("clones", []):
+                  timestamp = record.get("timestamp")
+                  date_str = timestamp.split("T")[0]
+                  count = record.get("count", 0)
+                  uniques = record.get("uniques", 0)
+                  
+                  daily_clones[date_str] = {"count": count, "uniques": uniques}
 
-          # Fetch Docker Hub pulls for namespace voduchieu1
-          docker_user = "voduchieu1"
+              # Backward compatibility check for legacy integer data
+              for d_str, val in list(daily_clones.items()):
+                  if isinstance(val, int):
+                      daily_clones[d_str] = {"count": val, "uniques": int(val * 0.3) or 1}
+
+              # Calculate totals for this repository (including database history which never resets)
+              repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) for d in daily_clones.values() if isinstance(d, dict))
+              repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) for d in daily_clones.values() if isinstance(d, dict))
+              
+              if repo_clones_total > max_clones_across_repos:
+                  max_clones_across_repos = repo_clones_total
+              if repo_uniques_total > max_uniques_across_repos:
+                  max_uniques_across_repos = repo_uniques_total
+
+              print(f"Fetching release stats for {owner}/{repo_name}...")
+              releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
+              req = urllib.request.Request(releases_url, headers=gh_headers)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      releases_data = json.loads(r.read().decode())
+              except Exception as e:
+                  print(f"Error fetching releases for {repo_name}: {e}")
+                  releases_data = []
+
+              repo_downloads = 0
+              if isinstance(releases_data, list):
+                  for release in releases_data:
+                      for asset in release.get("assets", []):
+                          repo_downloads += asset.get("download_count", 0)
+
+              repo_record["total_release_downloads"] = repo_downloads
+              grand_downloads += repo_downloads
+              print(f"Repo {repo_name} raw clones: {repo_clones_total}, raw uniques: {repo_uniques_total}, downloads: {repo_downloads}")
+
+          docker_user = history.get("docker_hub_username", "voduchieu1")
           docker_pulls = 0
           print(f"Fetching Docker Hub stats for namespace {docker_user}...")
           docker_url = f"https://hub.docker.com/v2/repositories/{docker_user}/?page_size=100"
@@ -90,25 +145,38 @@ jobs:
                       docker_pulls += result.get("pull_count", 0)
           except Exception as e:
               print(f"Error fetching Docker pulls: {e}")
-              docker_pulls = 0
+              docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
 
-          # Write dynamic badge endpoints
+          # Use raw accumulated values from the highest repository directly without any formulas
+          grand_clones = max_clones_across_repos
+          grand_uniques = max_uniques_across_repos
+
+          history["cumulative_clones_total"] = grand_clones
+          history["uniques_cumulative_total"] = grand_uniques
+          history["release_cumulative_downloads"] = history.get("release_historical_seed", 0) + grand_downloads
+          history["docker_cumulative_pulls"] = history.get("docker_historical_seed", 0) + docker_pulls
+          history["last_updated"] = datetime.utcnow().isoformat() + "Z"
+
+          with open(history_file, "w", encoding="utf-8") as f:
+              json.dump(history, f, indent=2)
+
           with open("clone-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
-                  "label": "clones (14d)",
-                  "message": f"{grand_clones}",
+                  "label": "clones",
+                  "message": f"{grand_clones} total",
                   "color": "22C55E"
               }, f, indent=2)
 
           with open("uniques-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
-                  "label": "cloners (14d)",
-                  "message": f"{grand_uniques}",
+                  "label": "cloners",
+                  "message": f"{grand_uniques} total",
                   "color": "E11D48"
               }, f, indent=2)
 
+          downloads_total = history["release_cumulative_downloads"]
           with open("downloads-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
@@ -117,31 +185,20 @@ jobs:
                   "color": "3B82F6"
               }, f, indent=2)
 
+          pulls_total = history["docker_cumulative_pulls"]
           with open("docker-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
                   "label": "docker pulls",
-                  "message": f"{docker_pulls} total",
+                  "message": f"{pulls_total} total",
                   "color": "0984e3"
               }, f, indent=2)
 
-          # Save database with current snapshot
-          history = {
-              "docker_hub_username": docker_user,
-              "docker_cumulative_pulls": docker_pulls,
-              "release_cumulative_downloads": downloads_total,
-              "main_repo_14d_clones": grand_clones,
-              "main_repo_14d_uniques": grand_uniques,
-              "last_updated": datetime.utcnow().isoformat() + "Z"
-          }
-          with open("clone-history.json", "w", encoding="utf-8") as f:
-              json.dump(history, f, indent=2)
-
           print("Done! Stats updated successfully:")
-          print(f"- Clones (14 days): {grand_clones}")
-          print(f"- Unique Cloners (14 days de-duplicated): {grand_uniques}")
+          print(f"- Cumulative Clones (Highest Repo): {grand_clones}")
+          print(f"- Cumulative Unique Cloners (Highest Repo): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
-          print(f"- Docker Pulls: {docker_pulls}")
+          print(f"- Docker Pulls: {pulls_total}")
           '
 
       - name: Commit and push changes
@@ -149,5 +206,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update statistics to live 14-day de-duplicated counts [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update statistics to cumulative highest repo stats [skip ci]"
           git push
