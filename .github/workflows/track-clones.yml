@@ -105,7 +105,7 @@ jobs:
                   if isinstance(val, int):
                       daily_clones[d_str] = {"count": val, "uniques": int(val * 0.3) or 1}
 
-              # Calculate cumulative totals for this repository (which never resets as history is kept in JSON)
+              # Calculate cumulative totals for this repository
               repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) for d in daily_clones.values() if isinstance(d, dict))
               repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) for d in daily_clones.values() if isinstance(d, dict))
               
@@ -113,6 +113,28 @@ jobs:
                   max_clones_across_repos = repo_clones_total
               if repo_uniques_total > max_uniques_across_repos:
                   max_uniques_across_repos = repo_uniques_total
+
+              # Calculate filtered human stats for this specific repo
+              human_ratio = history.get("human_ratio", 0.10)
+              repo_final_clones = int(repo_clones_total * human_ratio)
+              repo_final_uniques = int(repo_uniques_total * human_ratio)
+
+              # Write repository-specific badges
+              with open(f"{repo_name}-clone-badge.json", "w", encoding="utf-8") as f:
+                  json.dump({
+                      "schemaVersion": 1,
+                      "label": "clones",
+                      "message": f"{repo_final_clones} total",
+                      "color": "22C55E"
+                  }, f, indent=2)
+
+              with open(f"{repo_name}-uniques-badge.json", "w", encoding="utf-8") as f:
+                  json.dump({
+                      "schemaVersion": 1,
+                      "label": "cloners",
+                      "message": f"{repo_final_uniques} total",
+                      "color": "E11D48"
+                  }, f, indent=2)
 
               print(f"Fetching release stats for {owner}/{repo_name}...")
               releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
@@ -148,7 +170,7 @@ jobs:
               print(f"Error fetching Docker pulls: {e}")
               docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
 
-          # Apply human ratio filter to the highest repository's accumulated stats
+          # Calculate global max values for the organization profile page
           human_ratio = history.get("human_ratio", 0.10)
           grand_clones = int(max_clones_across_repos * human_ratio)
           grand_uniques = int(max_uniques_across_repos * human_ratio)
@@ -162,6 +184,7 @@ jobs:
           with open(history_file, "w", encoding="utf-8") as f:
               json.dump(history, f, indent=2)
 
+          # Write global fallback badges
           with open("clone-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
@@ -197,8 +220,8 @@ jobs:
               }, f, indent=2)
 
           print("Done! Stats updated successfully:")
-          print(f"- Cumulative Clones (Highest Repo * Human Ratio): {grand_clones}")
-          print(f"- Cumulative Unique Cloners (Highest Repo * Human Ratio): {grand_uniques}")
+          print(f"- Cumulative Clones (Global Max * Human Ratio): {grand_clones}")
+          print(f"- Cumulative Unique Cloners (Global Max * Human Ratio): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
           '
@@ -207,6 +230,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update statistics to cumulative highest repo stats with human filter [skip ci]"
+          git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json *-clone-badge.json *-uniques-badge.json
+          git diff-index --quiet HEAD || git commit -m "Update repository-specific and global clones statistics [skip ci]"
           git push
