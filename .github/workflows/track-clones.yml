@@ -91,25 +91,22 @@ jobs:
                   print(f"Error fetching clones for {repo_name}: {e}")
                   clones_data = {}
 
+              # Overwrite daily records with exact real data from GitHub API
               for record in clones_data.get("clones", []):
                   timestamp = record.get("timestamp")
                   date_str = timestamp.split("T")[0]
                   count = record.get("count", 0)
                   uniques = record.get("uniques", 0)
                   
-                  val = daily_clones.get(date_str, {"count": 0, "uniques": 0})
-                  if isinstance(val, int):
-                      val = {"count": val, "uniques": int(val * 0.3) or 1}
-                  
-                  if count > val.get("count", 0):
-                      val["count"] = count
-                  if uniques > val.get("uniques", 0):
-                      val["uniques"] = uniques
-                      
-                  daily_clones[date_str] = val
+                  daily_clones[date_str] = {"count": count, "uniques": uniques}
 
-              repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) if isinstance(d, dict) else d for d in daily_clones.values())
-              repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) if isinstance(d, dict) else int(d * 0.3) for d in daily_clones.values())
+              # Backward compatibility check for legacy integer data for days outside 14 days
+              for d_str, val in list(daily_clones.items()):
+                  if isinstance(val, int):
+                      daily_clones[d_str] = {"count": val, "uniques": int(val * 0.3) or 1}
+
+              repo_clones_total = repo_record.get("historical_seed", 0) + sum(d.get("count", 0) for d in daily_clones.values() if isinstance(d, dict))
+              repo_uniques_total = repo_record.get("historical_uniques_seed", 0) + sum(d.get("uniques", 0) for d in daily_clones.values() if isinstance(d, dict))
               
               grand_clones += repo_clones_total
               grand_uniques += repo_uniques_total
@@ -203,5 +200,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update multi-repo clones and unique cloners statistics [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update multi-repo clones and unique cloners statistics with exact API data [skip ci]"
           git push
