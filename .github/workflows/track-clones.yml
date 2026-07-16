@@ -65,7 +65,6 @@ jobs:
           history.setdefault("release_historical_seed", 0)
           history.setdefault("release_cumulative_downloads", 0)
           history.setdefault("uniques_cumulative_total", 0)
-          history.setdefault("human_ratio", 0.10)
           repos_history = history.setdefault("repositories", {})
 
           gh_headers = {
@@ -148,15 +147,19 @@ jobs:
               print(f"Error fetching Docker pulls: {e}")
               docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
 
-          human_ratio = history.get("human_ratio", 0.10)
-          grand_clones = int(max_clones_across_repos * human_ratio)
-          grand_uniques = int(max_uniques_across_repos * human_ratio)
+          # Use raw values of the highest repository directly without any scaling/formula
+          grand_clones = max_clones_across_repos
+          grand_uniques = max_uniques_across_repos
 
           history["cumulative_clones_total"] = grand_clones
           history["uniques_cumulative_total"] = grand_uniques
           history["release_cumulative_downloads"] = history.get("release_historical_seed", 0) + grand_downloads
           history["docker_cumulative_pulls"] = history.get("docker_historical_seed", 0) + docker_pulls
           history["last_updated"] = datetime.utcnow().isoformat() + "Z"
+
+          # Remove human_ratio from config since we are using raw data directly
+          if "human_ratio" in history:
+              del history["human_ratio"]
 
           with open(history_file, "w", encoding="utf-8") as f:
               json.dump(history, f, indent=2)
@@ -196,8 +199,8 @@ jobs:
               }, f, indent=2)
 
           print("Done! Stats updated successfully:")
-          print(f"- Clones (Max Repo * Human Ratio): {grand_clones}")
-          print(f"- Unique Cloners (Max Repo * Human Ratio): {grand_uniques}")
+          print(f"- Clones (Max Repo Raw): {grand_clones}")
+          print(f"- Unique Cloners (Max Repo Raw): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
           '
@@ -207,5 +210,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update statistics filtering out bots and taking highest repo [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update statistics using raw highest repo stats [skip ci]"
           git push
