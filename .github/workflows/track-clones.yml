@@ -57,30 +57,39 @@ jobs:
               with open(history_file, "r", encoding="utf-8") as f:
                   history = json.load(f)
           else:
-              history = {"repositories": {}, "cumulative_total": 5, "last_updated": ""}
+              history = {}
 
+          history.setdefault("docker_hub_username", "voduchieu1")
+          history.setdefault("docker_historical_seed", 0)
+          history.setdefault("docker_cumulative_pulls", 0)
+          history.setdefault("release_historical_seed", 0)
+          history.setdefault("release_cumulative_downloads", 0)
           repos_history = history.setdefault("repositories", {})
-          grand_total = 0
+
+          gh_headers = {
+              "Authorization": f"token {token}",
+              "Accept": "application/vnd.github.v3+json",
+              "User-Agent": "Github-Stats-Tracker"
+          }
+
+          grand_clones = 0
+          grand_downloads = 0
 
           for repo_name in REPOS:
-              print(f"Fetching clone stats for {owner}/{repo_name}...")
-              url = f"https://api.github.com/repos/{owner}/{repo_name}/traffic/clones"
-              req = urllib.request.Request(url)
-              req.add_header("Authorization", f"token {token}")
-              req.add_header("Accept", "application/vnd.github.v3+json")
-              req.add_header("User-Agent", "Github-Clones-Tracker")
-
-              try:
-                  with urllib.request.urlopen(req) as response:
-                      data = json.loads(response.read().decode())
-              except Exception as e:
-                  print(f"Error fetching clone stats for {repo_name}: {e}. Using existing history.")
-                  data = {}
-
               repo_record = repos_history.setdefault(repo_name, {"historical_seed": 0, "daily_clones": {}})
               daily_clones = repo_record.setdefault("daily_clones", {})
 
-              for record in data.get("clones", []):
+              print(f"Fetching clone stats for {owner}/{repo_name}...")
+              clones_url = f"https://api.github.com/repos/{owner}/{repo_name}/traffic/clones"
+              req = urllib.request.Request(clones_url, headers=gh_headers)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      clones_data = json.loads(r.read().decode())
+              except Exception as e:
+                  print(f"Error fetching clones for {repo_name}: {e}")
+                  clones_data = {}
+
+              for record in clones_data.get("clones", []):
                   timestamp = record.get("timestamp")
                   date_str = timestamp.split("T")[0]
                   count = record.get("count", 0)
@@ -89,32 +98,87 @@ jobs:
                   if count > existing_count:
                       daily_clones[date_str] = count
 
-              repo_total = repo_record.get("historical_seed", 0) + sum(daily_clones.values())
-              grand_total += repo_total
-              print(f"Repo {repo_name} total clones: {repo_total}")
+              repo_clones_total = repo_record.get("historical_seed", 0) + sum(daily_clones.values())
+              grand_clones += repo_clones_total
 
-          history["cumulative_total"] = grand_total
+              print(f"Fetching release stats for {owner}/{repo_name}...")
+              releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
+              req = urllib.request.Request(releases_url, headers=gh_headers)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      releases_data = json.loads(r.read().decode())
+              except Exception as e:
+                  print(f"Error fetching releases for {repo_name}: {e}")
+                  releases_data = []
+
+              repo_downloads = 0
+              if isinstance(releases_data, list):
+                  for release in releases_data:
+                      for asset in release.get("assets", []):
+                          repo_downloads += asset.get("download_count", 0)
+
+              repo_record["total_release_downloads"] = repo_downloads
+              grand_downloads += repo_downloads
+              print(f"Repo {repo_name} clones: {repo_clones_total}, release downloads: {repo_downloads}")
+
+          docker_user = history.get("docker_hub_username", "voduchieu1")
+          docker_pulls = 0
+          print(f"Fetching Docker Hub stats for namespace {docker_user}...")
+          docker_url = f"https://hub.docker.com/v2/repositories/{docker_user}/?page_size=100"
+          req = urllib.request.Request(docker_url, headers={"User-Agent": "Docker-Pulls-Tracker"})
+          try:
+              with urllib.request.urlopen(req) as r:
+                  docker_data = json.loads(r.read().decode())
+                  for result in docker_data.get("results", []):
+                      docker_pulls += result.get("pull_count", 0)
+          except Exception as e:
+              print(f"Error fetching Docker pulls: {e}")
+              docker_pulls = history.get("docker_cumulative_pulls", 0) - history.get("docker_historical_seed", 0)
+
+          history["cumulative_clones_total"] = grand_clones
+          history["release_cumulative_downloads"] = history.get("release_historical_seed", 0) + grand_downloads
+          history["docker_cumulative_pulls"] = history.get("docker_historical_seed", 0) + docker_pulls
           history["last_updated"] = datetime.utcnow().isoformat() + "Z"
 
           with open(history_file, "w", encoding="utf-8") as f:
               json.dump(history, f, indent=2)
 
-          badge = {
-              "schemaVersion": 1,
-              "label": "total clones",
-              "message": f"{grand_total} total",
-              "color": "22C55E"
-          }
           with open("clone-badge.json", "w", encoding="utf-8") as f:
-              json.dump(badge, f, indent=2)
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "clones",
+                  "message": f"{grand_clones} total",
+                  "color": "22C55E"
+              }, f, indent=2)
 
-          print(f"Successfully updated grand total clones count to: {grand_total}")
+          downloads_total = history["release_cumulative_downloads"]
+          with open("downloads-badge.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "downloads",
+                  "message": f"{downloads_total} total",
+                  "color": "3B82F6"
+              }, f, indent=2)
+
+          pulls_total = history["docker_cumulative_pulls"]
+          with open("docker-badge.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "docker pulls",
+                  "message": f"{pulls_total} total",
+                  "color": "0984e3"
+              }, f, indent=2)
+
+          print("Done! Stats updated successfully:")
+          print(f"- Clones: {grand_clones}")
+          print(f"- Release Downloads: {downloads_total}")
+          print(f"- Docker Pulls: {pulls_total}")
           '
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add clone-history.json clone-badge.json
-          git diff-index --quiet HEAD || git commit -m "Update multi-repo clone statistics [skip ci]"
+          git add clone-history.json clone-badge.json downloads-badge.json docker-badge.json
+          git diff-index --quiet HEAD || git commit -m "Update multi-repo and docker pulls statistics [skip ci]"
           git push

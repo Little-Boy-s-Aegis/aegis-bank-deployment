@@ -1,4 +1,9 @@
 {
+  "docker_hub_username": "voduchieu1",
+  "docker_historical_seed": 0,
+  "docker_cumulative_pulls": 0,
+  "release_historical_seed": 0,
+  "release_cumulative_downloads": 0,
   "repositories": {
     "aegis-bank-deployment": { "historical_seed": 5, "daily_clones": {} },
     "aegis-bank-backend": { "historical_seed": 0, "daily_clones": {} },
@@ -11,6 +16,6 @@
     "agent-layer-2": { "historical_seed": 0, "daily_clones": {} },
     "aegis-bank-terraform": { "historical_seed": 0, "daily_clones": {} }
   },
-  "cumulative_total": 5,
-  "last_updated": "2026-07-17T01:23:00Z"
+  "cumulative_clones_total": 5,
+  "last_updated": "2026-07-17T02:06:00Z"
 }
