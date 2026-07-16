@@ -1,5 +1,7 @@
 # Aegis Bank Deployment
 
+[![Git Clones](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Little-Boy-s-Aegis/aegis-bank-deployment/main/clone-badge.json)](https://github.com/Little-Boy-s-Aegis/aegis-bank-deployment)
+
 Local orchestration and deployment assets for the complete Little Boy's Aegis
 banking and AI-native SOC platform. The default Docker Compose stack joins the
 bank applications, telemetry pipeline, Layer 1/Layer 2 processing, SOAR
