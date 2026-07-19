@@ -76,10 +76,24 @@ jobs:
           max_clones_across_repos = 0
           max_uniques_across_repos = 0
           grand_downloads = 0
+          total_org_stars = 0
 
           for repo_name in REPOS:
               repo_record = repos_history.setdefault(repo_name, {"historical_seed": 0, "historical_uniques_seed": 0, "daily_clones": {}})
               daily_clones = repo_record.setdefault("daily_clones", {})
+
+              # Fetch repo metadata to get exact stars count
+              print(f"Fetching repository metadata for {owner}/{repo_name}...")
+              repo_url = f"https://api.github.com/repos/{owner}/{repo_name}"
+              req = urllib.request.Request(repo_url, headers=gh_headers)
+              repo_stars = 0
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      repo_data = json.loads(r.read().decode())
+                      repo_stars = repo_data.get("stargazers_count", 0)
+                      total_org_stars += repo_stars
+              except Exception as e:
+                  print(f"Error fetching metadata for {repo_name}: {e}")
 
               print(f"Fetching clone stats for {owner}/{repo_name}...")
               clones_url = f"https://api.github.com/repos/{owner}/{repo_name}/traffic/clones"
@@ -119,13 +133,15 @@ jobs:
               repo_final_clones = int(repo_clones_total * human_ratio)
               repo_final_uniques = int(repo_uniques_total * human_ratio)
 
-              # Write repository-specific badges
+              # Write repository-specific badges (dual Shields.io and Badgen format)
               with open(f"{repo_name}-clone-badge.json", "w", encoding="utf-8") as f:
                   json.dump({
                       "schemaVersion": 1,
                       "label": "clones",
                       "message": f"{repo_final_clones} total",
-                      "color": "22C55E"
+                      "color": "22C55E",
+                      "subject": "clones",
+                      "status": f"{repo_final_clones} total"
                   }, f, indent=2)
 
               with open(f"{repo_name}-uniques-badge.json", "w", encoding="utf-8") as f:
@@ -133,7 +149,9 @@ jobs:
                       "schemaVersion": 1,
                       "label": "cloners",
                       "message": f"{repo_final_uniques} total",
-                      "color": "E11D48"
+                      "color": "E11D48",
+                      "subject": "cloners",
+                      "status": f"{repo_final_uniques} total"
                   }, f, indent=2)
 
               print(f"Fetching release stats for {owner}/{repo_name}...")
@@ -154,7 +172,19 @@ jobs:
 
               repo_record["total_release_downloads"] = repo_downloads
               grand_downloads += repo_downloads
-              print(f"Repo {repo_name} raw clones: {repo_clones_total}, raw uniques: {repo_uniques_total}, downloads: {repo_downloads}")
+              print(f"Repo {repo_name} raw clones: {repo_clones_total}, raw uniques: {repo_uniques_total}, downloads: {repo_downloads}, stars: {repo_stars}")
+
+          # Fetch organization followers
+          print(f"Fetching followers count for organization {owner}...")
+          org_url = f"https://api.github.com/orgs/{owner}"
+          req = urllib.request.Request(org_url, headers=gh_headers)
+          org_followers = 0
+          try:
+              with urllib.request.urlopen(req) as r:
+                  org_data = json.loads(r.read().decode())
+                  org_followers = org_data.get("followers", 0)
+          except Exception as e:
+              print(f"Error fetching organization followers: {e}")
 
           docker_user = history.get("docker_hub_username", "voduchieu1")
           docker_pulls = 0
@@ -184,13 +214,15 @@ jobs:
           with open(history_file, "w", encoding="utf-8") as f:
               json.dump(history, f, indent=2)
 
-          # Write global fallback badges
+          # Write global fallback badges (dual Shields.io and Badgen format)
           with open("clone-badge.json", "w", encoding="utf-8") as f:
               json.dump({
                   "schemaVersion": 1,
                   "label": "clones",
                   "message": f"{grand_clones} total",
-                  "color": "22C55E"
+                  "color": "22C55E",
+                  "subject": "clones",
+                  "status": f"{grand_clones} total"
               }, f, indent=2)
 
           with open("uniques-badge.json", "w", encoding="utf-8") as f:
@@ -198,7 +230,9 @@ jobs:
                   "schemaVersion": 1,
                   "label": "cloners",
                   "message": f"{grand_uniques} total",
-                  "color": "E11D48"
+                  "color": "E11D48",
+                  "subject": "cloners",
+                  "status": f"{grand_uniques} total"
               }, f, indent=2)
 
           downloads_total = history["release_cumulative_downloads"]
@@ -207,7 +241,9 @@ jobs:
                   "schemaVersion": 1,
                   "label": "downloads",
                   "message": f"{downloads_total} total",
-                  "color": "3B82F6"
+                  "color": "3B82F6",
+                  "subject": "downloads",
+                  "status": f"{downloads_total} total"
               }, f, indent=2)
 
           pulls_total = history["docker_cumulative_pulls"]
@@ -216,7 +252,31 @@ jobs:
                   "schemaVersion": 1,
                   "label": "docker pulls",
                   "message": f"{pulls_total} total",
-                  "color": "0984e3"
+                  "color": "0984e3",
+                  "subject": "docker pulls",
+                  "status": f"{pulls_total} total"
+              }, f, indent=2)
+
+          # Write Organization total stars badge
+          with open("org-stars-badge.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "total stars",
+                  "message": f"{total_org_stars}",
+                  "color": "F59E0B",
+                  "subject": "total stars",
+                  "status": f"{total_org_stars}"
+              }, f, indent=2)
+
+          # Write Organization followers badge
+          with open("org-followers-badge.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "schemaVersion": 1,
+                  "label": "followers",
+                  "message": f"{org_followers}",
+                  "color": "0984e3",
+                  "subject": "followers",
+                  "status": f"{org_followers}"
               }, f, indent=2)
 
           # Automatically set repository topics/tags on GitHub for SEO
@@ -262,12 +322,14 @@ jobs:
           print(f"- Cumulative Unique Cloners (Global Max * Human Ratio): {grand_uniques}")
           print(f"- Release Downloads: {downloads_total}")
           print(f"- Docker Pulls: {pulls_total}")
+          print(f"- Total Org Stars: {total_org_stars}")
+          print(f"- Org Followers: {org_followers}")
           '
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json *-clone-badge.json *-uniques-badge.json
+          git add clone-history.json clone-badge.json uniques-badge.json downloads-badge.json docker-badge.json org-stars-badge.json org-followers-badge.json *-clone-badge.json *-uniques-badge.json
           git diff-index --quiet HEAD || git commit -m "Update repository-specific and global clones statistics [skip ci]"
           git push
