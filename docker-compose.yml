@@ -65,6 +65,7 @@ services:
   # Vector DB One-shot Bootstrap
   # ============================================
   vector-db-init:
+    image: voduchieu1/aegis-soar-engine:latest
     build:
       context: ../soar-engine
       dockerfile: Dockerfile
@@ -218,6 +219,7 @@ services:
   # Spring Boot Banking Backend (BE)
   # ============================================
   be-backend:
+    image: voduchieu1/aegis-bank-backend:latest
     build:
       context: ../BE
       dockerfile: Dockerfile
@@ -257,6 +259,7 @@ services:
   # Next.js Web Portal Frontend (FE_Web)
   # ============================================
   fe-web:
+    image: voduchieu1/aegis-bank-web-client:latest
     build:
       context: ../FE_Web
       dockerfile: Dockerfile
@@ -273,6 +276,7 @@ services:
   # Go SOC Backend (dashboard/backend)
   # ============================================
   dashboard-backend:
+    image: voduchieu1/aegis-dashboard-backend:latest
     build:
       context: ../dashboard
       dockerfile: Dockerfile
@@ -307,6 +311,7 @@ services:
   # SOC Dashboard React/Vite Frontend (dashboard/frontend)
   # ============================================
   dashboard-frontend:
+    image: voduchieu1/aegis-dashboard-frontend:latest
     build:
       context: ../dashboard/frontend
       dockerfile: Dockerfile
@@ -383,6 +388,7 @@ services:
   # Python Log Parser (L1 Pipeline)
   # ============================================
   log-parser:
+    image: voduchieu1/aegis-log-parser:latest
     build:
       context: ./log-parser
       dockerfile: Dockerfile
@@ -433,6 +439,7 @@ services:
   # Aegis SOAR Orchestrator Microservice (Qwen 3.7 Plus Agent)
   # ============================================
   soar-orchestrator:
+    image: voduchieu1/aegis-soar-engine:latest
     build:
       context: ../soar-engine
       dockerfile: Dockerfile
@@ -532,6 +539,7 @@ services:
   # Aegis SOAR Action Execution & Rate-Limiting Microservice (Message Queue Worker)
   # ============================================
   soar-action-worker:
+    image: voduchieu1/aegis-soar-engine:latest
     build:
       context: ../soar-engine
       dockerfile: Dockerfile
@@ -587,6 +595,7 @@ services:
   # System Design: 2 Orchestrator Instances (1 Active, 1 Standby)
   # ============================================
   soar-orchestrator-standby:
+    image: voduchieu1/aegis-soar-engine:latest
     build:
       context: ../soar-engine
       dockerfile: Dockerfile
@@ -657,6 +666,7 @@ services:
   # Aegis SOAR Action Worker STANDBY (HA Failover)
   # ============================================
   soar-action-worker-standby:
+    image: voduchieu1/aegis-soar-engine:latest
     build:
       context: ../soar-engine
       dockerfile: Dockerfile
@@ -779,6 +789,7 @@ services:
   # Staging Sandbox Simulator (Defensive API Mocks)
   # ============================================
   staging-sandbox:
+    image: voduchieu1/aegis-staging-sandbox:latest
     build:
       context: ./staging-sandbox
       dockerfile: Dockerfile
