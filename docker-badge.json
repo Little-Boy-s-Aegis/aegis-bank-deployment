@@ -2,5 +2,7 @@
   "schemaVersion": 1,
   "label": "docker pulls",
   "message": "251 total",
-  "color": "0984e3"
+  "color": "0984e3",
+  "subject": "docker pulls",
+  "status": "251 total"
 }

@@ -2,5 +2,7 @@
   "schemaVersion": 1,
   "label": "downloads",
   "message": "0 total",
-  "color": "3B82F6"
+  "color": "3B82F6",
+  "subject": "downloads",
+  "status": "0 total"
 }
