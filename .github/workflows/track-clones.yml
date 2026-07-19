@@ -219,6 +219,44 @@ jobs:
                   "color": "0984e3"
               }, f, indent=2)
 
+          # Automatically set repository topics/tags on GitHub for SEO
+          topics = [
+              "aegis",
+              "cybersecurity",
+              "security-operations-center",
+              "soar",
+              "intrusion-detection",
+              "banking-security",
+              "ai-native-security",
+              "incident-response",
+              "zero-trust",
+              "mitre-attack",
+              "capec",
+              "policy-as-code",
+              "siem",
+              "threat-hunting"
+          ]
+          for repo_name in REPOS:
+              print(f"Setting topics for {owner}/{repo_name}...")
+              topics_url = f"https://api.github.com/repos/{owner}/{repo_name}/topics"
+              req_body = json.dumps({"names": topics}).encode("utf-8")
+              req = urllib.request.Request(
+                  topics_url, 
+                  data=req_body, 
+                  headers={
+                      "Authorization": f"token {token}",
+                      "Accept": "application/vnd.github.mercurial-preview+json",
+                      "User-Agent": "Github-Stats-Tracker",
+                      "Content-Type": "application/json"
+                  },
+                  method="PUT"
+              )
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      print(f"Successfully set topics for {repo_name}")
+              except Exception as e:
+                  print(f"Error setting topics for {repo_name}: {e}")
+
           print("Done! Stats updated successfully:")
           print(f"- Cumulative Clones (Global Max * Human Ratio): {grand_clones}")
           print(f"- Cumulative Unique Cloners (Global Max * Human Ratio): {grand_uniques}")
