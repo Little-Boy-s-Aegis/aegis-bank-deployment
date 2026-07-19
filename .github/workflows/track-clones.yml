@@ -281,6 +281,8 @@ jobs:
 
           # Automatically set repository topics/tags on GitHub for SEO
           topics = [
+              "little-boys",
+              "little-boys-aegis",
               "aegis",
               "cybersecurity",
               "security-operations-center",
