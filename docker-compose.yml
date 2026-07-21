@@ -274,8 +274,6 @@ services:
       context: ../FE_Web
       dockerfile: Dockerfile
     container_name: aegis-fe-web
-    ports:
-      - "3000:3000"
     expose:
       - "3000"
     depends_on:
