@@ -44,9 +44,12 @@ QWEN_BASE_URL = os.getenv(
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() == "true"
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "dashscope").strip().lower()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").strip().lower()
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-coder-next")
 BEDROCK_REGION = os.getenv("BEDROCK_REGION", os.getenv("AWS_REGION", "us-east-1"))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 def _sync_s3_prefix(bucket: str, prefix: str, destination: str) -> None:
     if not bucket or not prefix:
@@ -662,6 +665,8 @@ class QwenSecurityAgent:
         self.provider = LLM_PROVIDER
         if self.provider == "bedrock":
             self.enabled = LLM_ENABLED
+        elif self.provider == "openai":
+            self.enabled = LLM_ENABLED and bool(OPENAI_API_KEY)
         else:
             self.enabled = LLM_ENABLED and bool(DASHSCOPE_API_KEY)
         self.client = None
@@ -713,6 +718,19 @@ class QwenSecurityAgent:
                         f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
                         f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
                     )
+                elif self.provider == "openai":
+                    from openai import OpenAI
+                    self.client = OpenAI(
+                        api_key=OPENAI_API_KEY,
+                        base_url=OPENAI_BASE_URL,
+                        timeout=LLM_TIMEOUT,
+                    )
+                    print(
+                        f"[LLM] Security Agent initialized (OpenAI/ChatGPT). "
+                        f"Model={OPENAI_MODEL} BaseURL={OPENAI_BASE_URL} "
+                        f"Timeout={LLM_TIMEOUT}s Retries={LLM_MAX_RETRIES} "
+                        f"CircuitBreaker={CIRCUIT_BREAKER_THRESHOLD}/{CIRCUIT_BREAKER_RECOVERY_SECONDS}s"
+                    )
                 else:
                     from openai import OpenAI
                     self.client = OpenAI(
@@ -733,7 +751,9 @@ class QwenSecurityAgent:
                 print(f"[LLM] WARNING: Failed to initialize {self.provider} client: {e}")
                 self.enabled = False
         else:
-            if self.provider != "bedrock" and not DASHSCOPE_API_KEY:
+            if self.provider == "openai" and not OPENAI_API_KEY:
+                print("[LLM] WARNING: OPENAI_API_KEY not set. LLM agent disabled, using classifier-only mode.")
+            elif self.provider not in ("bedrock", "openai") and not DASHSCOPE_API_KEY:
                 print("[LLM] WARNING: DASHSCOPE_API_KEY not set. LLM agent disabled, using classifier-only mode.")
             else:
                 print("[LLM] LLM agent disabled via LLM_ENABLED=false.")
@@ -963,6 +983,22 @@ class QwenSecurityAgent:
                     )
                     resp_data = json.loads(response["body"].read())
                     raw_output = self._extract_bedrock_text(resp_data)
+                elif self.provider == "openai":
+                    response = self.client.chat.completions.create(
+                        model=OPENAI_MODEL,
+                        messages=[
+                            {"role": "system", "content": agent_config["system_prompt"]},
+                            {"role": "user", "content": f"{telemetry_msg}\n\nReturn only a valid JSON object."},
+                        ],
+                        temperature=0.1,
+                        max_tokens=1500,
+                        response_format={"type": "json_object"},
+                    )
+
+                    if not response.choices:
+                        raise ValueError("Empty response: no choices returned by OpenAI API")
+
+                    raw_output = response.choices[0].message.content
                 else:
                     response = self.client.chat.completions.create(
                         model=QWEN_MODEL,

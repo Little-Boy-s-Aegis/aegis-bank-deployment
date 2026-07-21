@@ -65,7 +65,16 @@ SOAR_ATTACK_PATTERNS = {
         r"(?i)(\bunion\s+select\b|\bselect\s+.*\s+from\b|"
         r"\bdrop\s+table\b|\binsert\s+into\b|"
         r"\bor\s+1\s*=\s*1\b|'\s*or\s*'|--\s*$|"
-        r"\bexec\s*\(|xp_cmdshell|information_schema)",
+        r"\bexec\s*\(|xp_cmdshell|information_schema|"
+        r"type=SQL_INJECTION)",
+        re.IGNORECASE
+    ),
+    "BRUTE_FORCE": re.compile(
+        r"(?i)type=BRUTE_FORCE",
+        re.IGNORECASE
+    ),
+    "XSS_DETECTED": re.compile(
+        r"(?i)type=XSS",
         re.IGNORECASE
     ),
     "PATH_TRAVERSAL": re.compile(
@@ -98,6 +107,7 @@ SOAR_ATTACK_PATTERNS = {
         re.IGNORECASE
     ),
 }
+
 
 # Safe severities for internal IPs (drop noise)
 SAFE_SEVERITIES = frozenset(["info", "debug", "trace", "notice"])
@@ -207,9 +217,11 @@ class StaticRules:
 
         # ----- SOAR Fast Path (obvious attacks, bypass AI) -----
 
-        # Rule 4: Scan for unambiguous attack signatures (external IPs only)
+        # Rule 4: Scan for unambiguous attack signatures
+        # NOTE: Trigger for ALL IPs (including internal/Docker) since obvious
+        # attack payloads (SQLi, path traversal, etc.) should always be blocked.
         is_attack, attack_type = _check_soar_attacks(payload)
-        if is_attack and not is_internal:
+        if is_attack:
             self.stats["soar_fast_path"] += 1
             return ACTION_SOAR_FAST_PATH, {
                 "attack_type": attack_type,
@@ -226,15 +238,14 @@ class StaticRules:
     def get_stats(self):
         return self.stats.copy()
 
-
 def _get_soar_action(attack_type: str, is_internal: bool) -> str:
     """Determine recommended SOAR action for obvious attacks."""
-    if is_internal:
-        # Internal attacks need investigation, not blocking
-        return "INVESTIGATE_INTERNAL"
-    
+    # Always block for obvious attack patterns, even from internal IPs
+    # (internal sources can be compromised machines or local testing)
     action_map = {
         "SQL_INJECTION": "BLOCK_IP",
+        "BRUTE_FORCE": "BLOCK_IP",
+        "XSS_DETECTED": "BLOCK_IP",
         "PATH_TRAVERSAL": "BLOCK_IP",
         "LOG4J_JNDI": "BLOCK_IP",
         "COMMAND_INJECTION": "BLOCK_IP",
@@ -242,3 +253,4 @@ def _get_soar_action(attack_type: str, is_internal: bool) -> str:
         "SSRF_ATTEMPT": "BLOCK_IP",
     }
     return action_map.get(attack_type, "BLOCK_IP")
+

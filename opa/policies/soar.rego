@@ -39,6 +39,7 @@ violations["risk_below_floor"] { is_number(input.evidence.risk_score); input.evi
 violations["protected_target"] { protected_target }
 violations["private_or_loopback_ip"] {
     input.action.type == "block_ip"
+    not input.execution.allow_private_ip_ban == true
     cidr := config.protected_ip_ranges[_]
     net.cidr_contains(cidr, input.action.target.value_masked)
 }
