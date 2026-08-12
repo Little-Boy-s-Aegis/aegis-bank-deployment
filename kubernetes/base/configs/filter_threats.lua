@@ -34,17 +34,57 @@ local function pattern_match(text, pattern)
     return string.find(text, pattern) ~= nil
 end
 
-local function has_unescaped_quote(text)
+local function has_instruction_override(text)
     if not text then return false end
-    for i = 1, #text do
-        local c = string.sub(text, i, i)
-        if c == '"' or c == "'" then
-            if i == 1 or string.sub(text, i - 1, i - 1) ~= "\\" then
-                return true
+
+    local verbs = { "ignore", "forget", "override", "reset", "clear" }
+    local targets = { "previous", "prior", "system", "developer" }
+    local nouns = { "instruction", "prompt", "rule" }
+
+    for _, verb in ipairs(verbs) do
+        for _, target in ipairs(targets) do
+            for _, noun in ipairs(nouns) do
+                local base = "%f[%a]" .. verb .. "%f[%A]%s+"
+                local suffix = target .. "%s+" .. noun .. "s?%f[%A]"
+                if pattern_match(text, base .. suffix) or
+                   pattern_match(text, base .. "all%s+" .. suffix) then
+                    return true
+                end
             end
         end
     end
+
     return false
+end
+
+local function has_json_escape_breakout(text)
+    if not text then return false end
+
+    local compact = string.gsub(text, "%s+", "")
+    local breakout_markers = {
+        "}\"", "}'", "]\"", "]'"
+    }
+    for _, marker in ipairs(breakout_markers) do
+        if string.find(compact, marker, 1, true) ~= nil then
+            return true
+        end
+    end
+
+    local ending = string.sub(compact, -2)
+    if ending == "}\"" or ending == "}'" or ending == "]\"" or ending == "]'" then
+        return true
+    end
+
+    if pattern_match(text, "}%s*[\"']%s*[+,]") or
+       pattern_match(text, "%]%s*[\"']%s*[+,]") or
+       pattern_match(text, "}%s*[\"']%s*$") or
+       pattern_match(text, "%]%s*[\"']%s*$") then
+        return true
+    end
+
+    local lower = to_lower(text)
+    return string.find(lower, "\\u0022", 1, true) ~= nil or
+           string.find(lower, "\\x22", 1, true) ~= nil
 end
 
 function detect_threats(tag, timestamp, record)
@@ -96,15 +136,11 @@ function detect_threats(tag, timestamp, record)
         attack_type = "SYSTEM_FRAMING_INJECTION"
         description = "XML-style System framing or system prompts detected in payload."
 
-    -- 4. Instruction Override (Case Insensitive): ignore, forget, override, reset, clear
-    elseif pattern_match(payload_lower, "%f[%a]ignore%f[%A]") or 
-           pattern_match(payload_lower, "%f[%a]forget%f[%A]") or 
-           pattern_match(payload_lower, "%f[%a]override%f[%A]") or 
-           pattern_match(payload_lower, "%f[%a]reset%f[%A]") or 
-           pattern_match(payload_lower, "%f[%a]clear%f[%A]") then
+    -- 4. Instruction Override: require a complete adversarial instruction.
+    elseif has_instruction_override(payload_lower) then
         threat_detected = true
         attack_type = "INSTRUCTION_OVERRIDE"
-        description = "Potential instruction override keywords (ignore/forget/override/reset/clear) detected."
+        description = "Potential instruction override phrase targeting prior/system instructions detected."
 
     -- 5. Persona Hijacking (Case Insensitive): "you are now", "act as", "simulate", "roleplay"
     elseif pattern_match(payload_lower, "you%s+are%s+now") or 
@@ -136,8 +172,8 @@ function detect_threats(tag, timestamp, record)
         attack_type = "MARKDOWN_CODE_BLOCK"
         description = "Active markdown script/code block invocation detected."
 
-    -- 9. JSON Escaping: unescaped quotes matching PCRE intent (?<!\\)" or (?<!\\)'
-    elseif has_unescaped_quote(payload) then
+    -- 9. JSON Escaping: structural breakout or encoded quote escape.
+    elseif has_json_escape_breakout(payload) then
         threat_detected = true
         attack_type = "JSON_ESCAPING"
         description = "Potential JSON structure escaping sequence detected."
